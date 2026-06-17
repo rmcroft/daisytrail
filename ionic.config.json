@@ -1,0 +1,7 @@
+{
+  "name": "Troop Tracker",
+  "type": "angular",
+  "integrations": {
+    "capacitor": {}
+  }
+}

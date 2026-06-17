@@ -1,0 +1,397 @@
+:host {
+  color: #1d2520;
+}
+
+ion-toolbar {
+  --background: #ffffff;
+}
+
+.segment-toolbar {
+  --min-height: 72px;
+}
+
+.mobile-tabs {
+  display: none;
+}
+
+ion-segment {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+ion-segment-button {
+  min-height: 56px;
+}
+
+.mobile-tabs ion-segment {
+  max-width: none;
+}
+
+.mobile-tabs ion-segment-button {
+  min-width: 54px;
+  min-height: 54px;
+}
+
+.progress-segment {
+  max-width: none;
+  margin: 4px 0;
+}
+
+.progress-segment ion-segment-button {
+  min-height: 46px;
+}
+
+.mobile-tabs ion-label {
+  font-size: 0.68rem;
+}
+
+.troop-switcher {
+  width: min(220px, 42vw);
+  min-height: 38px;
+  margin-right: 4px;
+  --background: #f7f8f4;
+}
+
+.auth-shell {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: 28px 14px;
+  background:
+    linear-gradient(115deg, rgba(8, 92, 61, 0.88), rgba(37, 92, 146, 0.8)),
+    url("https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=1800&q=80");
+  background-position: center;
+  background-size: cover;
+}
+
+.auth-panel {
+  display: grid;
+  width: min(460px, 100%);
+  gap: 14px;
+}
+
+.auth-panel h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: 0;
+}
+
+.auth-message {
+  margin: 0;
+  color: #b84771;
+  font-weight: 700;
+}
+
+.success-message {
+  margin: 0 0 12px;
+  color: #0b7f5a;
+  font-weight: 700;
+}
+
+.app-shell {
+  width: min(1180px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 22px 0 48px;
+}
+
+.hero-band {
+  display: flex;
+  min-height: 170px;
+  align-items: flex-end;
+  margin-bottom: 18px;
+  padding: 26px;
+  color: #ffffff;
+  background:
+    linear-gradient(115deg, rgba(8, 92, 61, 0.95), rgba(37, 92, 146, 0.86)),
+    url("https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=1800&q=80");
+  background-position: center;
+  background-size: cover;
+  border-radius: 8px;
+}
+
+.hero-band h1 {
+  max-width: 760px;
+  margin: 4px 0 0;
+  font-size: clamp(2rem, 4vw, 3.7rem);
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.event-rsvp-card,
+.email-draft-card,
+.progress-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(28, 70, 52, 0.12);
+}
+
+.event-rsvp-card h3,
+.email-draft-card h3,
+.progress-card h3 {
+  margin: 0;
+}
+
+.event-rsvp-card p,
+.email-draft-card p,
+.progress-card p {
+  margin: 4px 0 0;
+  color: #66736c;
+}
+
+.rsvp-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(220px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  background: #f7f8f4;
+  border-radius: 8px;
+}
+
+.rsvp-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.email-draft-card pre {
+  max-height: 180px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: #2e3a33;
+  white-space: pre-wrap;
+  background: #f7f8f4;
+  border-radius: 8px;
+}
+
+.progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.meeting-girl-label {
+  min-width: 0;
+}
+
+.meeting-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.two-column {
+  display: grid;
+  grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  min-width: 0;
+  padding: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(28, 70, 52, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(23, 35, 29, 0.08);
+}
+
+.panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-heading h2,
+.badge-block h3,
+.badge-card h3 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.panel-heading p,
+.badge-block p,
+.badge-card p,
+.agenda,
+.empty-copy {
+  margin: 4px 0 0;
+  color: #66736c;
+}
+
+.eyebrow {
+  margin: 0;
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.form-panel {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.stacked-panels {
+  display: grid;
+  gap: 18px;
+}
+
+.edit-panel {
+  margin-top: 18px;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+ion-input,
+ion-select,
+ion-textarea {
+  width: 100%;
+  min-width: 0;
+  --background: #f7f8f4;
+  --border-color: rgba(28, 70, 52, 0.16);
+  --border-radius: 8px;
+  --padding-start: 12px;
+  --padding-end: 12px;
+  border: 1px solid rgba(28, 70, 52, 0.14);
+  border-radius: 8px;
+}
+
+ion-button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+ion-label {
+  min-width: 0;
+}
+
+ion-list {
+  background: transparent;
+}
+
+ion-item {
+  --background: transparent;
+  --border-color: rgba(28, 70, 52, 0.12);
+}
+
+.selected-item {
+  --background: rgba(11, 127, 90, 0.09);
+}
+
+.badge-block,
+.badge-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(28, 70, 52, 0.12);
+}
+
+.requirement-grid {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  background: #f7f8f4;
+  border-radius: 8px;
+}
+
+.requirement-grid ion-checkbox {
+  align-self: center;
+}
+
+.requirement-check-row {
+  grid-template-columns: auto minmax(0, 1fr);
+  min-height: 82px;
+  cursor: pointer;
+}
+
+.requirement-check-row ion-checkbox {
+  --border-radius: 50%;
+  pointer-events: none;
+}
+
+.requirement-check-row strong {
+  font-size: 1.05rem;
+}
+
+.requirement-check-row.requirement-complete {
+  cursor: default;
+}
+
+.requirement-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.requirement-grid p {
+  margin: 2px 0 0;
+  color: #66736c;
+}
+
+ion-chip {
+  min-width: 76px;
+  justify-content: center;
+  cursor: pointer;
+}
+
+ol {
+  margin: 0;
+  padding-left: 22px;
+  color: #445149;
+}
+
+@media (max-width: 820px) {
+  .desktop-tabs {
+    display: none;
+  }
+
+  .mobile-tabs {
+    display: block;
+  }
+
+  .app-shell {
+    width: min(100% - 20px, 720px);
+    padding-top: 14px;
+    padding-bottom: 96px;
+  }
+
+  .hero-band {
+    min-height: 150px;
+    padding: 20px;
+  }
+
+  .two-column,
+  .form-grid,
+  .rsvp-row,
+  .rsvp-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .requirement-grid {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .desktop-tabs ion-segment {
+    max-width: none;
+  }
+}
