@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { AlertController, IonicModule } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
@@ -12,7 +12,6 @@ import {
   funnelOutline,
   logInOutline,
   logOutOutline,
-  mailOutline,
   medalOutline,
   peopleOutline,
   personAddOutline,
@@ -45,6 +44,9 @@ interface GirlBadgeProgress {
 type BadgeProgressSegment = 'all' | 'started' | 'completed';
 
 const scoutLevels: ScoutLevel[] = ['Daisy', 'Brownie', 'Junior', 'Cadette', 'Senior', 'Ambassador'];
+const gradeOptions = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+const calendarWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const phonePattern = /^$|^\s*(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\s*$/;
 
 @Component({
   selector: 'app-root',
@@ -64,25 +66,33 @@ export class AppComponent {
   readonly availableTroops = this.troopData.availableTroops;
   readonly parentGirls = this.troopData.parentGirls;
   readonly emailReminderDrafts = this.troopData.emailReminderDrafts;
+  readonly visibleAccounts = this.troopData.visibleAccounts;
+  readonly pendingAccounts = this.troopData.pendingAccounts;
   readonly levels = scoutLevels;
+  readonly gradeOptions = gradeOptions;
+  readonly calendarWeekdays = calendarWeekdays;
+  readonly calendarMonth = signal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   readonly selectedEventId = signal<string | null>(this.state().events[0]?.id ?? null);
-  readonly selectedSegment = signal<'dashboard' | 'girls' | 'schedule' | 'badges' | 'troops' | 'updates'>('dashboard');
+  readonly selectedSegment = signal<'dashboard' | 'girls' | 'schedule' | 'badges' | 'troops'>('dashboard');
   readonly authMode = signal<'login' | 'register'>('login');
   readonly authMessage = signal('');
   readonly updateMessage = signal('');
   readonly eventCompleteMessage = signal('');
-  readonly showAddGirlForm = signal(false);
-  readonly showAddEventForm = signal(false);
-  readonly showAddBadgeForm = signal(false);
+  readonly showAddAttendeeList = signal(false);
+  readonly activeGirlEditor = signal<'create' | 'edit' | null>(null);
+  readonly activeEventEditor = signal<'create' | 'edit' | null>(null);
   readonly editingGirlId = signal<string | null>(null);
   readonly selectedGirlId = signal<string | null>(null);
   readonly editingEventId = signal<string | null>(null);
   readonly editingBadgeId = signal<string | null>(null);
+  readonly activeBadgeEditor = signal<'create' | 'edit' | null>(null);
   readonly badgeProgressSegment = signal<BadgeProgressSegment>('all');
   readonly girlLevelFilter = signal<ScoutLevel | 'All'>('All');
   readonly badgeLevelFilter = signal<ScoutLevel | 'All'>('All');
-  readonly eventBadgeLevelFilter = signal<ScoutLevel | 'All'>('All');
   readonly eventBadgeSearch = signal('');
+  readonly eventBadgePickerLevelFilter = signal<ScoutLevel | 'All'>('All');
+  readonly activeEventBadgePicker = signal<'create' | 'edit' | null>(null);
+  readonly pendingEventBadgeIds = signal<string[]>([]);
   readonly badgeSourceUrl = 'https://www.girlscouts.org/en/members/for-girl-scouts/badges-journeys-awards/badge-explorer.html';
 
   readonly selectedEvent = computed(() => {
@@ -90,14 +100,45 @@ export class AppComponent {
     return this.state().events.find((event) => event.id === selectedId) ?? this.state().events[0] ?? null;
   });
 
+  readonly visibleEvents = computed(() => {
+    const account = this.currentAccount();
+    return this.state().events.filter((event) => account?.role !== 'parent' || !event.adminOnly);
+  });
+
   readonly upcomingEvents = computed(() =>
-    [...this.state().events].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`))
+    [...this.visibleEvents()].sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`))
   );
 
   readonly parentUpcomingEvents = computed(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return this.upcomingEvents().filter((event) => new Date(`${event.date}T${event.startTime || '00:00'}`) >= today);
+  });
+
+  readonly calendarMonthLabel = computed(() =>
+    new Intl.DateTimeFormat([], { month: 'long', year: 'numeric' }).format(this.calendarMonth())
+  );
+
+  readonly calendarDays = computed(() => {
+    const month = this.calendarMonth();
+    const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+    const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+    const days: Array<{ date: string; day: number; eventCount: number } | null> = [];
+
+    for (let blank = 0; blank < firstDay.getDay(); blank += 1) {
+      days.push(null);
+    }
+
+    for (let day = 1; day <= lastDay.getDate(); day += 1) {
+      const date = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      days.push({
+        date,
+        day,
+        eventCount: this.visibleEvents().filter((event) => event.date === date).length
+      });
+    }
+
+    return days;
   });
 
   readonly selectedEventBadges = computed(() => {
@@ -123,6 +164,10 @@ export class AppComponent {
 
   readonly currentTroopId = computed(() => this.currentTroop()?.id ?? '');
   readonly currentTroopName = computed(() => this.currentTroop()?.name ?? 'No troop selected');
+  readonly currentTroopLevels = computed(() => {
+    const troopLevels = this.currentTroop()?.levels ?? [];
+    return troopLevels.length > 0 ? troopLevels : this.levels;
+  });
 
   readonly troopBadges = computed(() => {
     const troopLevels = this.currentTroop()?.levels ?? [];
@@ -159,7 +204,7 @@ export class AppComponent {
     const search = this.eventBadgeSearch().trim().toLowerCase();
 
     return this.troopBadges().filter((badge) => {
-      const matchesLevel = this.eventBadgeLevelFilter() === 'All' || badge.level === this.eventBadgeLevelFilter();
+      const matchesLevel = this.eventBadgePickerLevelFilter() === 'All' || badge.level === this.eventBadgePickerLevelFilter();
       const matchesSearch =
         !search ||
         badge.title.toLowerCase().includes(search) ||
@@ -170,15 +215,21 @@ export class AppComponent {
     });
   });
 
+  readonly eventBadgePickerOpen = computed(() => this.activeEventBadgePicker() !== null);
+  readonly badgeEditorOpen = computed(() => this.activeBadgeEditor() !== null);
+  readonly girlEditorOpen = computed(() => this.activeGirlEditor() !== null);
+  readonly eventEditorOpen = computed(() => this.activeEventEditor() !== null);
+
   readonly girlForm = this.fb.nonNullable.group({
     firstName: ['', Validators.required],
     lastName: ['', Validators.required],
     level: ['Junior' as ScoutLevel, Validators.required],
-    schoolGrade: [''],
+    schoolGrade: ['', Validators.required],
+    goalsForYear: [''],
     notes: [''],
     parentName: ['', Validators.required],
     parentRelationship: ['Parent'],
-    parentPhone: [''],
+    parentPhone: ['', Validators.pattern(phonePattern)],
     parentEmail: ['', Validators.email],
     additionalGuardians: [''],
     authorizedPickupNames: ['']
@@ -188,11 +239,12 @@ export class AppComponent {
     firstName: ['', Validators.required],
     lastName: ['', Validators.required],
     level: ['Junior' as ScoutLevel, Validators.required],
-    schoolGrade: [''],
+    schoolGrade: ['', Validators.required],
+    goalsForYear: [''],
     notes: [''],
     parentName: ['', Validators.required],
     parentRelationship: ['Parent'],
-    parentPhone: [''],
+    parentPhone: ['', Validators.pattern(phonePattern)],
     parentEmail: ['', Validators.email],
     additionalGuardians: [''],
     authorizedPickupNames: ['']
@@ -204,6 +256,9 @@ export class AppComponent {
     startTime: ['18:00', Validators.required],
     location: [''],
     agenda: [''],
+    evidenceNotes: [''],
+    evidencePhotos: [''],
+    adminOnly: [false],
     badgeIds: [[] as string[]]
   });
 
@@ -213,6 +268,9 @@ export class AppComponent {
     startTime: ['', Validators.required],
     location: [''],
     agenda: [''],
+    evidenceNotes: [''],
+    evidencePhotos: [''],
+    adminOnly: [false],
     badgeIds: [[] as string[]]
   });
 
@@ -234,7 +292,8 @@ export class AppComponent {
     name: [''],
     email: ['leader@example.com', [Validators.required, Validators.email]],
     password: ['troop123', [Validators.required, Validators.minLength(6)]],
-    troopName: ['Troop 1001']
+    confirmPassword: [''],
+    troopId: ['troop-1001']
   });
 
   readonly troopForm = this.fb.nonNullable.group({
@@ -277,7 +336,6 @@ export class AppComponent {
       funnelOutline,
       logInOutline,
       logOutOutline,
-      mailOutline,
       medalOutline,
       peopleOutline,
       personAddOutline,
@@ -295,13 +353,23 @@ export class AppComponent {
     }
 
     const form = this.authForm.getRawValue();
+    if (this.authMode() === 'register' && (!form.name.trim() || !form.troopId)) {
+      this.authMessage.set('Enter your name and choose a troop.');
+      return;
+    }
+
+    if (this.authMode() === 'register' && form.password !== form.confirmPassword) {
+      this.authMessage.set('Passwords must match.');
+      return;
+    }
+
     const result =
       this.authMode() === 'login'
         ? this.troopData.login(form.email, form.password)
-        : this.troopData.registerAccount(form.name, form.email, form.password, form.troopName);
+        : this.troopData.registerAccount(form.name, form.email, form.password, form.troopId);
 
     this.authMessage.set(result.message);
-    if (result.ok) {
+    if (result.ok && this.authMode() === 'login') {
       this.selectedEventId.set(this.state().events[0]?.id ?? null);
       this.selectedSegment.set('dashboard');
     }
@@ -313,9 +381,12 @@ export class AppComponent {
     this.selectedSegment.set('dashboard');
   }
 
-  setSelectedSegment(segment: 'dashboard' | 'girls' | 'schedule' | 'badges' | 'troops' | 'updates'): void {
+  setSelectedSegment(segment: 'dashboard' | 'girls' | 'schedule' | 'badges' | 'troops'): void {
     this.selectedSegment.set(segment);
     this.editingEventId.set(null);
+    this.editingGirlId.set(null);
+    this.activeEventEditor.set(null);
+    this.activeGirlEditor.set(null);
     this.editEventForm.reset({ badgeIds: [] });
     this.editingBadgeId.set(null);
   }
@@ -323,6 +394,23 @@ export class AppComponent {
   switchTroop(troopId: string): void {
     this.troopData.switchTroop(troopId);
     this.selectedEventId.set(this.state().events[0]?.id ?? null);
+  }
+
+  changeCalendarMonth(offset: number): void {
+    const current = this.calendarMonth();
+    this.calendarMonth.set(new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  isSystemAdmin(): boolean {
+    return this.currentAccount()?.role === 'system-admin';
+  }
+
+  isTroopAdmin(): boolean {
+    return this.currentAccount()?.role === 'troop-admin';
+  }
+
+  approveAccount(accountId: string): void {
+    this.troopData.approveAccount(accountId);
   }
 
   addTroop(): void {
@@ -349,6 +437,7 @@ export class AppComponent {
       lastName: form.lastName,
       level: form.level,
       schoolGrade: form.schoolGrade,
+      goalsForYear: form.goalsForYear,
       notes: form.notes,
       parent: {
         name: form.parentName,
@@ -367,7 +456,13 @@ export class AppComponent {
       authorizedPickupNames: this.pickupNamesFromForm(form.parentName, form.authorizedPickupNames)
     });
     this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
-    this.showAddGirlForm.set(false);
+    this.closeGirlEditor();
+  }
+
+  openAddGirlModal(): void {
+    this.editingGirlId.set(null);
+    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
+    this.activeGirlEditor.set('create');
   }
 
   startEditGirl(girl: Girl): void {
@@ -378,6 +473,7 @@ export class AppComponent {
       lastName: girl.lastName,
       level: girl.level,
       schoolGrade: girl.schoolGrade,
+      goalsForYear: girl.goalsForYear,
       notes: girl.notes,
       parentName: girl.parent.name,
       parentRelationship: girl.parent.relationship,
@@ -389,10 +485,18 @@ export class AppComponent {
         .join('\n'),
       authorizedPickupNames: girl.authorizedPickupNames.join('\n')
     });
+    this.activeGirlEditor.set('edit');
   }
 
   cancelEditGirl(): void {
     this.editingGirlId.set(null);
+    this.editGirlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
+  }
+
+  closeGirlEditor(): void {
+    this.activeGirlEditor.set(null);
+    this.editingGirlId.set(null);
+    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
     this.editGirlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
   }
 
@@ -423,6 +527,7 @@ export class AppComponent {
       lastName: form.lastName,
       level: form.level,
       schoolGrade: form.schoolGrade,
+      goalsForYear: form.goalsForYear,
       notes: form.notes,
       parent: {
         name: form.parentName,
@@ -440,7 +545,7 @@ export class AppComponent {
       ),
       authorizedPickupNames: this.pickupNamesFromForm(form.parentName, form.authorizedPickupNames)
     });
-    this.cancelEditGirl();
+    this.closeGirlEditor();
   }
 
   addEvent(): void {
@@ -450,27 +555,47 @@ export class AppComponent {
     }
 
     const form = this.eventForm.getRawValue();
-    this.troopData.addEvent(form);
+    this.troopData.addEvent({
+      ...form,
+      evidencePhotos: this.linesFromText(form.evidencePhotos)
+    });
     this.selectedEventId.set(this.state().events.at(-1)?.id ?? null);
     this.eventForm.reset({
       date: new Date().toISOString().slice(0, 10),
       startTime: '18:00',
+      adminOnly: false,
       badgeIds: []
     });
-    this.showAddEventForm.set(false);
+    this.closeEventEditor();
+  }
+
+  openAddEventModal(): void {
+    this.editingEventId.set(null);
+    this.eventForm.reset({
+      date: new Date().toISOString().slice(0, 10),
+      startTime: '18:00',
+      adminOnly: false,
+      badgeIds: []
+    });
+    this.activeEventEditor.set('create');
   }
 
   startEditEvent(event: TroopEvent): void {
     this.selectEvent(event);
     this.editingEventId.set(event.id);
+    this.showAddAttendeeList.set(false);
     this.editEventForm.reset({
       title: event.title,
       date: event.date,
       startTime: event.startTime,
       location: event.location,
       agenda: event.agenda,
+      evidenceNotes: event.evidenceNotes,
+      evidencePhotos: event.evidencePhotos.join('\n'),
+      adminOnly: event.adminOnly,
       badgeIds: event.badgeIds
     });
+    this.activeEventEditor.set('edit');
   }
 
   saveEventEdit(): void {
@@ -484,15 +609,34 @@ export class AppComponent {
       return;
     }
 
-    this.troopData.updateEventDetails(eventId, this.editEventForm.getRawValue());
+    const form = this.editEventForm.getRawValue();
+    this.troopData.updateEventDetails(eventId, {
+      ...form,
+      evidencePhotos: this.linesFromText(form.evidencePhotos)
+    });
     const updatedEvent = this.state().events.find((event) => event.id === eventId);
     if (updatedEvent && this.shouldApplyCompletedEventChanges(updatedEvent)) {
       this.completeEvent(updatedEvent);
     }
+    this.closeEventEditor();
   }
 
   cancelEventEdit(): void {
     this.editingEventId.set(null);
+    this.showAddAttendeeList.set(false);
+    this.editEventForm.reset({ badgeIds: [] });
+  }
+
+  closeEventEditor(): void {
+    this.activeEventEditor.set(null);
+    this.editingEventId.set(null);
+    this.showAddAttendeeList.set(false);
+    this.eventForm.reset({
+      date: new Date().toISOString().slice(0, 10),
+      startTime: '18:00',
+      adminOnly: false,
+      badgeIds: []
+    });
     this.editEventForm.reset({ badgeIds: [] });
   }
 
@@ -516,8 +660,14 @@ export class AppComponent {
       sourceUrl: this.badgeSourceUrl,
       requirements
     });
-    this.badgeForm.reset({ level: 'Junior' });
-    this.showAddBadgeForm.set(false);
+    this.badgeForm.reset({ level: this.currentTroopLevels()[0] ?? 'Junior' });
+    this.closeBadgeEditor();
+  }
+
+  openAddBadgeModal(): void {
+    this.editingBadgeId.set(null);
+    this.badgeForm.reset({ level: this.currentTroopLevels()[0] ?? 'Junior' });
+    this.activeBadgeEditor.set('create');
   }
 
   startEditBadge(badge: Badge): void {
@@ -528,11 +678,19 @@ export class AppComponent {
       topic: badge.topic,
       requirements: badge.requirements.map((requirement) => requirement.title).join('\n')
     });
+    this.activeBadgeEditor.set('edit');
   }
 
   cancelBadgeEdit(): void {
     this.editingBadgeId.set(null);
-    this.editBadgeForm.reset({ level: 'Junior' });
+    this.editBadgeForm.reset({ level: this.currentTroopLevels()[0] ?? 'Junior' });
+  }
+
+  closeBadgeEditor(): void {
+    this.activeBadgeEditor.set(null);
+    this.editingBadgeId.set(null);
+    this.badgeForm.reset({ level: this.currentTroopLevels()[0] ?? 'Junior' });
+    this.editBadgeForm.reset({ level: this.currentTroopLevels()[0] ?? 'Junior' });
   }
 
   saveBadgeEdit(): void {
@@ -565,7 +723,7 @@ export class AppComponent {
       sourceUrl: existingBadge?.sourceUrl ?? this.badgeSourceUrl,
       requirements
     });
-    this.cancelBadgeEdit();
+    this.closeBadgeEditor();
   }
 
   awardBadge(): void {
@@ -623,10 +781,91 @@ export class AppComponent {
 
   markAttended(event: TroopEvent, girl: Girl): void {
     this.troopData.markAttended(event.id, girl.id);
+    this.showAddAttendeeList.set(false);
     const updatedEvent = this.state().events.find((item) => item.id === event.id);
     if (updatedEvent && this.shouldApplyCompletedEventChanges(updatedEvent)) {
       this.completeEvent(updatedEvent);
     }
+  }
+
+  attendedGirls(event: TroopEvent): Girl[] {
+    return this.state().girls.filter((girl) => event.attendance[girl.id]);
+  }
+
+  availableAttendees(event: TroopEvent): Girl[] {
+    return this.state().girls.filter((girl) => !event.attendance[girl.id]);
+  }
+
+  isEventBadgeSelected(form: FormGroup, badgeId: string): boolean {
+    return ((form.get('badgeIds')?.value ?? []) as string[]).includes(badgeId);
+  }
+
+  selectedEventBadgeCount(form: FormGroup): number {
+    return ((form.get('badgeIds')?.value ?? []) as string[]).length;
+  }
+
+  selectedEventBadgeSummary(form: FormGroup): string {
+    const selectedIds = (form.get('badgeIds')?.value ?? []) as string[];
+    if (selectedIds.length === 0) {
+      return 'No badges selected';
+    }
+
+    return selectedIds
+      .map((badgeId) => this.state().badges.find((badge) => badge.id === badgeId)?.title)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(', ') + (selectedIds.length > 2 ? ` +${selectedIds.length - 2} more` : '');
+  }
+
+  toggleEventBadge(form: FormGroup, badgeId: string, checked?: boolean): void {
+    const control = form.get('badgeIds');
+    const current = ((control?.value ?? []) as string[]).filter(Boolean);
+    const shouldSelect = checked ?? !current.includes(badgeId);
+    const next = shouldSelect
+      ? Array.from(new Set([...current, badgeId]))
+      : current.filter((id) => id !== badgeId);
+
+    control?.setValue(next);
+    control?.markAsDirty();
+  }
+
+  openEventBadgePicker(target: 'create' | 'edit'): void {
+    const form = target === 'create' ? this.eventForm : this.editEventForm;
+    this.eventBadgeSearch.set('');
+    this.eventBadgePickerLevelFilter.set('All');
+    this.pendingEventBadgeIds.set([...(form.get('badgeIds')?.value ?? [])]);
+    this.activeEventBadgePicker.set(target);
+  }
+
+  closeEventBadgePicker(): void {
+    this.activeEventBadgePicker.set(null);
+    this.pendingEventBadgeIds.set([]);
+    this.eventBadgeSearch.set('');
+    this.eventBadgePickerLevelFilter.set('All');
+  }
+
+  applyEventBadgePicker(): void {
+    const target = this.activeEventBadgePicker();
+    if (!target) {
+      return;
+    }
+
+    const form = target === 'create' ? this.eventForm : this.editEventForm;
+    form.get('badgeIds')?.setValue(this.pendingEventBadgeIds());
+    form.get('badgeIds')?.markAsDirty();
+    this.closeEventBadgePicker();
+  }
+
+  isPendingEventBadgeSelected(badgeId: string): boolean {
+    return this.pendingEventBadgeIds().includes(badgeId);
+  }
+
+  togglePendingEventBadge(badgeId: string, checked?: boolean): void {
+    const current = this.pendingEventBadgeIds();
+    const shouldSelect = checked ?? !current.includes(badgeId);
+    this.pendingEventBadgeIds.set(
+      shouldSelect ? Array.from(new Set([...current, badgeId])) : current.filter((id) => id !== badgeId)
+    );
   }
 
   toggleRequirement(eventId: string, girlId: string, requirementId: string): void {
@@ -847,6 +1086,13 @@ export class AppComponent {
       .filter(Boolean);
 
     return Array.from(new Set([primaryName, ...names].filter(Boolean)));
+  }
+
+  private linesFromText(value: string): string[] {
+    return value
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
 
   private guardianLine(guardian: ParentContact): string {

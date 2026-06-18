@@ -25,10 +25,12 @@ ion-segment-button {
 
 .mobile-tabs ion-segment {
   max-width: none;
+  width: 100%;
 }
 
 .mobile-tabs ion-segment-button {
-  min-width: 54px;
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 54px;
 }
 
@@ -182,11 +184,25 @@ ion-segment-button {
   justify-content: flex-end;
 }
 
+.attendance-list {
+  margin-bottom: 12px;
+}
+
+.add-attendee-list {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
   gap: 18px;
   align-items: start;
+}
+
+.single-column {
+  display: grid;
+  gap: 18px;
 }
 
 .panel {
@@ -253,6 +269,211 @@ ion-segment-button {
   gap: 10px;
 }
 
+.section-action-button {
+  min-height: 52px;
+  --background: #0b8f68;
+  --background-hover: #087a59;
+  --background-activated: #087a59;
+  --border-radius: 16px;
+  --box-shadow: none;
+  --color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.section-action-button ion-icon {
+  font-size: 1.35rem;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calendar-grid > strong {
+  color: #66736c;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.calendar-day,
+.calendar-blank {
+  display: grid;
+  min-height: 54px;
+  place-items: center;
+  color: inherit;
+  font: inherit;
+  background: #f7f8f4;
+  border: 1px solid rgba(28, 70, 52, 0.12);
+  border-radius: 8px;
+}
+
+.calendar-day {
+  position: relative;
+}
+
+.calendar-day.has-events {
+  border-color: rgba(11, 127, 90, 0.38);
+}
+
+.calendar-day i {
+  position: absolute;
+  bottom: 8px;
+  width: 7px;
+  height: 7px;
+  background: #0b8f68;
+  border-radius: 999px;
+}
+
+.toggle-row {
+  --background: #f7f8f4;
+  --border-radius: 8px;
+  border: 1px solid rgba(28, 70, 52, 0.14);
+  border-radius: 8px;
+}
+
+.today-complete-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.today-complete-panel .success-message {
+  margin: 0;
+}
+
+.badge-picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.badge-picker-trigger {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  padding: 14px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: #f7f8f4;
+  border: 1px solid rgba(28, 70, 52, 0.14);
+  border-radius: 8px;
+}
+
+.badge-picker-trigger span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.badge-picker-trigger small,
+.badge-picker-trigger em {
+  color: #66736c;
+  font-size: 0.9rem;
+  font-style: normal;
+}
+
+.badge-picker-trigger small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge-picker-trigger em {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.badge-picker-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.badge-picker-heading span {
+  color: #66736c;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.badge-picker-list {
+  display: grid;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid rgba(28, 70, 52, 0.14);
+  border-radius: 8px;
+}
+
+.badge-picker-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: #f7f8f4;
+  border: 0;
+  border-bottom: 1px solid rgba(28, 70, 52, 0.12);
+}
+
+.badge-picker-row:last-child {
+  border-bottom: 0;
+}
+
+.badge-picker-row span {
+  min-width: 0;
+}
+
+.badge-picker-modal,
+.badge-editor-modal,
+.editor-modal {
+  --background: #ffffff;
+}
+
+.badge-picker-modal-content,
+.badge-editor-modal-content,
+.editor-modal-content {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.modal-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(28, 70, 52, 0.12);
+}
+
+.badge-level-segment {
+  max-width: none;
+  margin: 0;
+}
+
+.badge-level-segment ion-segment-button {
+  min-width: max-content;
+  min-height: 42px;
+}
+
+.badge-picker-list-modal {
+  max-height: none;
+}
+
+.badge-picker-empty {
+  padding: 12px;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -302,6 +523,14 @@ ion-item {
   gap: 12px;
   padding: 14px 0;
   border-top: 1px solid rgba(28, 70, 52, 0.12);
+}
+
+.badge-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .requirement-grid {

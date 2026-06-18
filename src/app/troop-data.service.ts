@@ -16,6 +16,7 @@ export interface Girl {
   lastName: string;
   level: ScoutLevel;
   schoolGrade: string;
+  goalsForYear: string;
   notes: string;
   parent: ParentContact;
   guardians: ParentContact[];
@@ -64,6 +65,9 @@ export interface TroopEvent {
   startTime: string;
   location: string;
   agenda: string;
+  evidenceNotes: string;
+  evidencePhotos: string[];
+  adminOnly: boolean;
   badgeIds: string[];
   attendance: Record<string, boolean>;
   completions: Record<string, Record<string, boolean>>;
@@ -94,7 +98,8 @@ export interface Account {
   name: string;
   email: string;
   passwordHash: string;
-  role: 'leader' | 'parent';
+  role: 'system-admin' | 'troop-admin' | 'parent';
+  status: 'active' | 'pending';
   troopIds: string[];
   girlIds: string[];
 }
@@ -151,6 +156,7 @@ const starterTroopData: TroopState = {
       lastName: 'Johnson',
       level: 'Junior',
       schoolGrade: '4',
+      goalsForYear: 'Complete an outdoor badge and help plan one troop activity.',
       notes: 'Prefers text reminders through parent.',
       parent: {
         name: 'Alicia Johnson',
@@ -183,6 +189,7 @@ const starterTroopData: TroopState = {
       lastName: 'Patel',
       level: 'Junior',
       schoolGrade: '5',
+      goalsForYear: 'Earn a STEM badge and try a new leadership role.',
       notes: 'Cookie booth captain interest.',
       parent: {
         name: 'Nina Patel',
@@ -208,6 +215,7 @@ const starterTroopData: TroopState = {
       lastName: 'Martinez',
       level: 'Cadette',
       schoolGrade: '6',
+      goalsForYear: 'Mentor younger girls and complete outdoor art badge work.',
       notes: 'Interested in mentoring younger girls.',
       parent: {
         name: 'Elena Martinez',
@@ -233,6 +241,7 @@ const starterTroopData: TroopState = {
       lastName: 'Chen',
       level: 'Cadette',
       schoolGrade: '7',
+      goalsForYear: 'Build outdoor leadership skills and log service hours.',
       notes: 'Working toward outdoor leadership badges.',
       parent: {
         name: 'Grace Chen',
@@ -336,6 +345,9 @@ const starterTroopData: TroopState = {
       startTime: '18:00',
       location: 'Community Room',
       agenda: 'Plan hiking route, review gear, and complete badge prep requirements.',
+      evidenceNotes: 'Reviewed route planning and safety supplies.',
+      evidencePhotos: ['trail-planning-whiteboard.jpg'],
+      adminOnly: false,
       badgeIds: ['badge-1', 'badge-4'],
       attendance: { 'girl-1': true, 'girl-2': false },
       rsvps: {
@@ -373,6 +385,9 @@ const starterTroopData: TroopState = {
       startTime: '19:00',
       location: 'Art Room',
       agenda: 'Juniors continue trail planning while Cadettes work on outdoor art activities.',
+      evidenceNotes: 'Cadettes sketched outdoor art ideas; Juniors practiced route planning.',
+      evidencePhotos: ['badge-studio-sketches.jpg'],
+      adminOnly: false,
       badgeIds: ['badge-1', 'badge-4'],
       attendance: { 'girl-1': true, 'girl-3': true, 'girl-4': false },
       rsvps: {
@@ -415,11 +430,22 @@ const starterTroopData: TroopState = {
 const starterState: AppState = {
   accounts: [
     {
+      id: 'account-system-admin',
+      name: 'System Admin',
+      email: 'admin@example.com',
+      passwordHash: hashPassword('admin123'),
+      role: 'system-admin',
+      status: 'active',
+      troopIds: [],
+      girlIds: []
+    },
+    {
       id: 'account-demo',
       name: 'Troop Leader',
       email: 'leader@example.com',
       passwordHash: hashPassword('troop123'),
-      role: 'leader',
+      role: 'troop-admin',
+      status: 'active',
       troopIds: ['troop-1001', 'troop-2045'],
       girlIds: []
     },
@@ -429,6 +455,7 @@ const starterState: AppState = {
       email: 'alicia@example.com',
       passwordHash: hashPassword('parent123'),
       role: 'parent',
+      status: 'active',
       troopIds: ['troop-1001'],
       girlIds: ['girl-1']
     },
@@ -438,6 +465,7 @@ const starterState: AppState = {
       email: 'nina@example.com',
       passwordHash: hashPassword('parent123'),
       role: 'parent',
+      status: 'active',
       troopIds: ['troop-1001'],
       girlIds: ['girl-2']
     },
@@ -447,6 +475,7 @@ const starterState: AppState = {
       email: 'elena@example.com',
       passwordHash: hashPassword('parent123'),
       role: 'parent',
+      status: 'active',
       troopIds: ['troop-1001'],
       girlIds: ['girl-3']
     },
@@ -456,8 +485,19 @@ const starterState: AppState = {
       email: 'grace@example.com',
       passwordHash: hashPassword('parent123'),
       role: 'parent',
+      status: 'active',
       troopIds: ['troop-1001'],
       girlIds: ['girl-4']
+    },
+    {
+      id: 'account-pending-parent',
+      name: 'Pending Parent',
+      email: 'pending@example.com',
+      passwordHash: hashPassword('parent123'),
+      role: 'parent',
+      status: 'pending',
+      troopIds: ['troop-1001'],
+      girlIds: []
     }
   ],
   troops: [
@@ -498,7 +538,11 @@ export class TroopDataService {
   readonly availableTroops = computed(() => {
     const account = this.currentAccount();
     if (!account) {
-      return [];
+      return this.state().troops;
+    }
+
+    if (account.role === 'system-admin') {
+      return this.state().troops;
     }
 
     return this.state().troops.filter((troop) => account.troopIds.includes(troop.id));
@@ -531,6 +575,28 @@ export class TroopDataService {
     return this.state().emailReminderDrafts.filter((draft) => draft.troopId === troop.id);
   });
 
+  readonly visibleAccounts = computed(() => {
+    const account = this.currentAccount();
+    const troop = this.currentTroop();
+    if (!account) {
+      return [];
+    }
+
+    if (account.role === 'system-admin') {
+      return this.state().accounts;
+    }
+
+    if (account.role === 'troop-admin' && troop) {
+      return this.state().accounts.filter((item) => item.troopIds.includes(troop.id));
+    }
+
+    return [account];
+  });
+
+  readonly pendingAccounts = computed(() =>
+    this.visibleAccounts().filter((account) => account.status === 'pending')
+  );
+
   login(email: string, password: string): LoginResult {
     const normalizedEmail = email.trim().toLowerCase();
     const account = this.state().accounts.find((item) => item.email.toLowerCase() === normalizedEmail);
@@ -539,52 +605,58 @@ export class TroopDataService {
       return { ok: false, message: 'Email or password did not match.' };
     }
 
+    if (account.status === 'pending') {
+      return { ok: false, message: 'Your account is pending troop leader approval.' };
+    }
+
     this.state.update((current) => ({
       ...current,
       currentAccountId: account.id,
-      currentTroopId: account.troopIds[0] ?? null
+      currentTroopId: account.role === 'system-admin' ? current.troops[0]?.id ?? null : account.troopIds[0] ?? null
     }));
     this.persist();
     return { ok: true, message: 'Signed in.' };
   }
 
-  registerAccount(name: string, email: string, password: string, troopName: string): LoginResult {
+  registerAccount(name: string, email: string, password: string, troopId: string): LoginResult {
     const normalizedEmail = email.trim().toLowerCase();
     if (this.state().accounts.some((account) => account.email.toLowerCase() === normalizedEmail)) {
       return { ok: false, message: 'An account already exists for that email.' };
     }
 
+    const selectedTroop = this.state().troops.find((troop) => troop.id === troopId);
+    if (!selectedTroop) {
+      return { ok: false, message: 'Choose a troop to request access.' };
+    }
+
     const accountId = crypto.randomUUID();
-    const troopId = crypto.randomUUID();
     const account: Account = {
       id: accountId,
-      name: name.trim() || 'Troop Leader',
+      name: name.trim() || 'New Parent',
       email: normalizedEmail,
       passwordHash: hashPassword(password),
-      role: 'leader',
+      role: 'parent',
+      status: 'pending',
       troopIds: [troopId],
       girlIds: []
-    };
-    const troop: Troop = {
-      id: troopId,
-      name: troopName.trim() || 'New Troop',
-      council: '',
-      levels: ['Junior'],
-      data: {
-        ...emptyTroopState,
-        badges: starterTroopData.badges
-      }
     };
 
     this.state.update((current) => ({
       ...current,
-      accounts: [...current.accounts, account],
-      troops: [...current.troops, troop],
-      currentAccountId: accountId,
-      currentTroopId: troopId
+      accounts: [...current.accounts, account]
     }));
     this.persist();
-    return { ok: true, message: 'Account created.' };
+    return { ok: true, message: `Account requested for ${selectedTroop.name}. A troop leader must approve it before sign in.` };
+  }
+
+  approveAccount(accountId: string): void {
+    this.state.update((current) => ({
+      ...current,
+      accounts: current.accounts.map((account) =>
+        account.id === accountId ? { ...account, status: 'active' as const } : account
+      )
+    }));
+    this.persist();
   }
 
   logout(): void {
@@ -678,7 +750,10 @@ export class TroopDataService {
 
   updateEventDetails(
     eventId: string,
-    event: Pick<TroopEvent, 'title' | 'date' | 'startTime' | 'location' | 'agenda' | 'badgeIds'>
+    event: Pick<
+      TroopEvent,
+      'title' | 'date' | 'startTime' | 'location' | 'agenda' | 'evidenceNotes' | 'evidencePhotos' | 'adminOnly' | 'badgeIds'
+    >
   ): void {
     this.updateEvent(eventId, (currentEvent) => ({
       ...currentEvent,
@@ -737,6 +812,7 @@ export class TroopDataService {
           requirementWork: {},
           checkIns: {},
           rsvps: {},
+          adminOnly: event.adminOnly ?? false,
           completedAt: null
         }
       ]
@@ -1023,13 +1099,22 @@ function hashPassword(password: string): string {
   return btoa(`troop-tracker:${password}`);
 }
 
+function normalizeRole(role: Account['role'] | 'leader' | undefined): Account['role'] {
+  if (role === 'system-admin' || role === 'troop-admin' || role === 'parent') {
+    return role;
+  }
+
+  return 'troop-admin';
+}
+
 function normalizeState(state: AppState): AppState {
   const normalizedState = {
     ...state,
     emailReminderDrafts: state.emailReminderDrafts ?? [],
     accounts: state.accounts.map((account) => ({
       ...account,
-      role: account.role ?? 'leader',
+      role: normalizeRole(account.role),
+      status: account.status ?? 'active',
       troopIds: account.troopIds ?? [],
       girlIds: account.girlIds ?? []
     })),
@@ -1065,6 +1150,9 @@ function normalizeTroopState(state: TroopState): TroopState {
     manualCompletions: state.manualCompletions ?? {},
     events: state.events.map((event) => ({
       ...event,
+      evidenceNotes: event.evidenceNotes ?? '',
+      evidencePhotos: event.evidencePhotos ?? [],
+      adminOnly: event.adminOnly ?? false,
       requirementWork: event.requirementWork ?? requirementWorkFromCompletions(event.completions ?? {}),
       checkIns: event.checkIns ?? {},
       rsvps: event.rsvps ?? {},
@@ -1083,6 +1171,7 @@ function normalizeGirl(girl: Girl): Girl {
 
   return {
     ...girl,
+    goalsForYear: girl.goalsForYear ?? '',
     parent,
     guardians,
     authorizedPickupNames
@@ -1158,7 +1247,7 @@ function createReminderDraft(troop: Troop, event: TroopEvent, girl: Girl): Email
     girlId: girl.id,
     to: girl.parent.email,
     subject: `${troop.name} reminder: ${event.title}`,
-    body: `Hi ${girl.parent.name || 'there'},\n\nReminder that ${girl.firstName} has ${event.title} on ${event.date} at ${event.startTime}. Location: ${event.location || 'TBD'}.\n\nPlease RSVP in Troop Tracker when you can.\n\nThis is a draft only and has not been sent.`,
+    body: `Hi ${girl.parent.name || 'there'},\n\nReminder that ${girl.firstName} has ${event.title} on ${event.date} at ${event.startTime}. Location: ${event.location || 'TBD'}.\n\nPlease RSVP in Daisy Trail when you can.\n\nThis is a draft only and has not been sent.`,
     status: 'draft',
     createdAt: new Date().toISOString()
   };
@@ -1199,6 +1288,7 @@ function upsertParentAccount(accounts: Account[], troopId: string, girl: Girl, g
         email,
         passwordHash: hashPassword('parent123'),
         role: 'parent',
+        status: 'active',
         troopIds: [troopId],
         girlIds: [girl.id]
       }
@@ -1209,7 +1299,6 @@ function upsertParentAccount(accounts: Account[], troopId: string, girl: Girl, g
     account.id === existing.id
       ? {
           ...account,
-          role: account.role === 'leader' ? account.role : 'parent',
           troopIds: account.troopIds.includes(troopId) ? account.troopIds : [...account.troopIds, troopId],
           girlIds: account.girlIds.includes(girl.id) ? account.girlIds : [...account.girlIds, girl.id]
         }
