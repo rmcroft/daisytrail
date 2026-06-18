@@ -21,6 +21,7 @@ import {
   shieldCheckmarkOutline
 } from 'ionicons/icons';
 import {
+  Account,
   Badge,
   BadgeRequirement,
   Girl,
@@ -42,6 +43,7 @@ interface GirlBadgeProgress {
 }
 
 type BadgeProgressSegment = 'all' | 'started' | 'completed';
+type ParentSegment = 'events' | 'badges' | 'girls';
 
 const scoutLevels: ScoutLevel[] = ['Daisy', 'Brownie', 'Junior', 'Cadette', 'Senior', 'Ambassador'];
 const gradeOptions = ['K', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
@@ -72,15 +74,20 @@ export class AppComponent {
   readonly gradeOptions = gradeOptions;
   readonly calendarWeekdays = calendarWeekdays;
   readonly calendarMonth = signal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-  readonly selectedEventId = signal<string | null>(this.state().events[0]?.id ?? null);
+  readonly selectedEventId = signal<string | null>(null);
   readonly selectedSegment = signal<'dashboard' | 'girls' | 'schedule' | 'badges' | 'troops'>('dashboard');
   readonly authMode = signal<'login' | 'register'>('login');
   readonly authMessage = signal('');
   readonly updateMessage = signal('');
   readonly eventCompleteMessage = signal('');
   readonly showAddAttendeeList = signal(false);
+  readonly selectedCalendarDate = signal(new Date().toISOString().slice(0, 10));
+  readonly parentSegment = signal<ParentSegment>('events');
   readonly activeGirlEditor = signal<'create' | 'edit' | null>(null);
   readonly activeEventEditor = signal<'create' | 'edit' | null>(null);
+  readonly badgeAwardEditorOpen = signal(false);
+  readonly parentGirlEditorOpen = signal(false);
+  readonly editingParentAccountId = signal<string | null>(null);
   readonly editingGirlId = signal<string | null>(null);
   readonly selectedGirlId = signal<string | null>(null);
   readonly editingEventId = signal<string | null>(null);
@@ -89,16 +96,12 @@ export class AppComponent {
   readonly badgeProgressSegment = signal<BadgeProgressSegment>('all');
   readonly girlLevelFilter = signal<ScoutLevel | 'All'>('All');
   readonly badgeLevelFilter = signal<ScoutLevel | 'All'>('All');
+  readonly badgeCatalogLevelFilter = signal<ScoutLevel | 'All'>('All');
   readonly eventBadgeSearch = signal('');
   readonly eventBadgePickerLevelFilter = signal<ScoutLevel | 'All'>('All');
   readonly activeEventBadgePicker = signal<'create' | 'edit' | null>(null);
   readonly pendingEventBadgeIds = signal<string[]>([]);
   readonly badgeSourceUrl = 'https://www.girlscouts.org/en/members/for-girl-scouts/badges-journeys-awards/badge-explorer.html';
-
-  readonly selectedEvent = computed(() => {
-    const selectedId = this.selectedEventId();
-    return this.state().events.find((event) => event.id === selectedId) ?? this.state().events[0] ?? null;
-  });
 
   readonly visibleEvents = computed(() => {
     const account = this.currentAccount();
@@ -115,6 +118,14 @@ export class AppComponent {
     return this.upcomingEvents().filter((event) => new Date(`${event.date}T${event.startTime || '00:00'}`) >= today);
   });
 
+  readonly nextVisibleEvent = computed(() => this.parentUpcomingEvents()[0] ?? this.upcomingEvents()[0] ?? null);
+  readonly parentHeroTitle = computed(() => 'Family dashboard');
+
+  readonly selectedEvent = computed(() => {
+    const selectedId = this.selectedEventId();
+    return this.visibleEvents().find((event) => event.id === selectedId) ?? this.nextVisibleEvent();
+  });
+
   readonly calendarMonthLabel = computed(() =>
     new Intl.DateTimeFormat([], { month: 'long', year: 'numeric' }).format(this.calendarMonth())
   );
@@ -123,7 +134,7 @@ export class AppComponent {
     const month = this.calendarMonth();
     const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
     const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-    const days: Array<{ date: string; day: number; eventCount: number } | null> = [];
+    const days: Array<{ date: string; day: number; eventCount: number; adminOnlyCount: number } | null> = [];
 
     for (let blank = 0; blank < firstDay.getDay(); blank += 1) {
       days.push(null);
@@ -134,12 +145,19 @@ export class AppComponent {
       days.push({
         date,
         day,
-        eventCount: this.visibleEvents().filter((event) => event.date === date).length
+        eventCount: this.visibleEvents().filter((event) => event.date === date).length,
+        adminOnlyCount: this.visibleEvents().filter((event) => event.date === date && event.adminOnly).length
       });
     }
 
     return days;
   });
+
+  readonly selectedCalendarEvents = computed(() =>
+    this.visibleEvents()
+      .filter((event) => event.date === this.selectedCalendarDate())
+      .sort((a, b) => a.startTime.localeCompare(b.startTime))
+  );
 
   readonly selectedEventBadges = computed(() => {
     const event = this.selectedEvent();
@@ -173,6 +191,10 @@ export class AppComponent {
     const troopLevels = this.currentTroop()?.levels ?? [];
     return this.state().badges.filter((badge) => troopLevels.length === 0 || troopLevels.includes(badge.level));
   });
+
+  readonly filteredTroopBadges = computed(() =>
+    this.troopBadges().filter((badge) => this.badgeCatalogLevelFilter() === 'All' || badge.level === this.badgeCatalogLevelFilter())
+  );
 
   readonly allSelectedEventBadges = computed(() => {
     const event = this.selectedEvent();
@@ -326,6 +348,10 @@ export class AppComponent {
     givenAt: [new Date().toISOString().slice(0, 10), Validators.required]
   });
 
+  readonly parentGirlAssociationForm = this.fb.nonNullable.group({
+    girlIds: [[] as string[]]
+  });
+
   constructor() {
     addIcons({
       calendarOutline,
@@ -344,6 +370,10 @@ export class AppComponent {
       saveOutline,
       shieldCheckmarkOutline
     });
+    const nextEvent = this.nextVisibleEvent();
+    if (nextEvent) {
+      this.selectedCalendarDate.set(nextEvent.date);
+    }
   }
 
   submitAuth(): void {
@@ -370,7 +400,12 @@ export class AppComponent {
 
     this.authMessage.set(result.message);
     if (result.ok && this.authMode() === 'login') {
-      this.selectedEventId.set(this.state().events[0]?.id ?? null);
+      const nextEvent = this.nextVisibleEvent();
+      this.selectedEventId.set(nextEvent?.id ?? null);
+      if (nextEvent) {
+        this.selectedCalendarDate.set(nextEvent.date);
+        this.calendarMonth.set(new Date(`${nextEvent.date}T00:00:00`));
+      }
       this.selectedSegment.set('dashboard');
     }
   }
@@ -393,12 +428,21 @@ export class AppComponent {
 
   switchTroop(troopId: string): void {
     this.troopData.switchTroop(troopId);
-    this.selectedEventId.set(this.state().events[0]?.id ?? null);
+    const nextEvent = this.nextVisibleEvent();
+    this.selectedEventId.set(nextEvent?.id ?? null);
+    if (nextEvent) {
+      this.selectedCalendarDate.set(nextEvent.date);
+      this.calendarMonth.set(new Date(`${nextEvent.date}T00:00:00`));
+    }
   }
 
   changeCalendarMonth(offset: number): void {
     const current = this.calendarMonth();
     this.calendarMonth.set(new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  selectCalendarDate(date: string): void {
+    this.selectedCalendarDate.set(date);
   }
 
   isSystemAdmin(): boolean {
@@ -411,6 +455,52 @@ export class AppComponent {
 
   approveAccount(accountId: string): void {
     this.troopData.approveAccount(accountId);
+  }
+
+  inactivateAccount(accountId: string): void {
+    this.troopData.setAccountStatus(accountId, 'inactive');
+  }
+
+  activateAccount(accountId: string): void {
+    this.troopData.setAccountStatus(accountId, 'active');
+  }
+
+  accountStatusLabel(account: Account): string {
+    return account.status === 'inactive' ? 'disabled' : account.status;
+  }
+
+  parentGirlNames(account: Account): string {
+    const names = this.state()
+      .girls.filter((girl) => account.girlIds.includes(girl.id))
+      .map((girl) => `${girl.firstName} ${girl.lastName}`);
+
+    return names.length > 0 ? names.join(', ') : 'No girls assigned';
+  }
+
+  openParentGirlEditor(account: Account): void {
+    if (account.role !== 'parent' || (!this.isSystemAdmin() && !this.isTroopAdmin())) {
+      return;
+    }
+
+    this.editingParentAccountId.set(account.id);
+    this.parentGirlAssociationForm.reset({ girlIds: account.girlIds });
+    this.parentGirlEditorOpen.set(true);
+  }
+
+  closeParentGirlEditor(): void {
+    this.parentGirlEditorOpen.set(false);
+    this.editingParentAccountId.set(null);
+    this.parentGirlAssociationForm.reset({ girlIds: [] });
+  }
+
+  saveParentGirlAssociations(): void {
+    const accountId = this.editingParentAccountId();
+    if (!accountId) {
+      return;
+    }
+
+    this.troopData.updateParentGirlAssociations(accountId, this.parentGirlAssociationForm.getRawValue().girlIds);
+    this.closeParentGirlEditor();
   }
 
   addTroop(): void {
@@ -641,6 +731,10 @@ export class AppComponent {
   }
 
   addBadge(): void {
+    if (!this.isSystemAdmin()) {
+      return;
+    }
+
     if (this.badgeForm.invalid) {
       this.badgeForm.markAllAsTouched();
       return;
@@ -665,20 +759,17 @@ export class AppComponent {
   }
 
   openAddBadgeModal(): void {
+    if (!this.isSystemAdmin()) {
+      return;
+    }
+
     this.editingBadgeId.set(null);
     this.badgeForm.reset({ level: this.currentTroopLevels()[0] ?? 'Junior' });
     this.activeBadgeEditor.set('create');
   }
 
-  startEditBadge(badge: Badge): void {
-    this.editingBadgeId.set(badge.id);
-    this.editBadgeForm.reset({
-      title: badge.title,
-      level: badge.level,
-      topic: badge.topic,
-      requirements: badge.requirements.map((requirement) => requirement.title).join('\n')
-    });
-    this.activeBadgeEditor.set('edit');
+  startEditBadge(_badge: Badge): void {
+    return;
   }
 
   cancelBadgeEdit(): void {
@@ -694,35 +785,6 @@ export class AppComponent {
   }
 
   saveBadgeEdit(): void {
-    const badgeId = this.editingBadgeId();
-    if (!badgeId) {
-      return;
-    }
-
-    if (this.editBadgeForm.invalid) {
-      this.editBadgeForm.markAllAsTouched();
-      return;
-    }
-
-    const form = this.editBadgeForm.getRawValue();
-    const existingBadge = this.state().badges.find((badge) => badge.id === badgeId);
-    const existingRequirements = existingBadge?.requirements ?? [];
-    const requirements = form.requirements
-      .split('\n')
-      .map((title) => title.trim())
-      .filter(Boolean)
-      .map((title, index) => ({
-        id: existingRequirements[index]?.title === title ? existingRequirements[index].id : '',
-        title
-      }));
-
-    this.troopData.updateBadge(badgeId, {
-      title: form.title,
-      level: form.level,
-      topic: form.topic || 'Custom',
-      sourceUrl: existingBadge?.sourceUrl ?? this.badgeSourceUrl,
-      requirements
-    });
     this.closeBadgeEditor();
   }
 
@@ -734,6 +796,17 @@ export class AppComponent {
 
     const form = this.badgeAwardForm.getRawValue();
     this.troopData.awardBadge(form.girlId, form.badgeId, form.awardedAt, form.note);
+    this.badgeAwardForm.reset({ awardedAt: new Date().toISOString().slice(0, 10) });
+    this.closeBadgeAwardEditor();
+  }
+
+  openBadgeAwardEditor(): void {
+    this.badgeAwardForm.reset({ awardedAt: new Date().toISOString().slice(0, 10) });
+    this.badgeAwardEditorOpen.set(true);
+  }
+
+  closeBadgeAwardEditor(): void {
+    this.badgeAwardEditorOpen.set(false);
     this.badgeAwardForm.reset({ awardedAt: new Date().toISOString().slice(0, 10) });
   }
 
@@ -983,6 +1056,10 @@ export class AppComponent {
     return `${rsvp.status.toUpperCase()} · ${this.formatDateTime(rsvp.respondedAt)}`;
   }
 
+  rsvpStatusValue(event: TroopEvent, girlId: string): RsvpStatus | '' {
+    return event.rsvps[girlId]?.status ?? '';
+  }
+
   awardedBadgesForGirl(girlId: string): Array<{ title: string; awardedAt: string; note: string }> {
     return (this.state().badgeAwards[girlId] ?? []).map((award) => {
       const badge = this.state().badges.find((item) => item.id === award.badgeId);
@@ -1025,6 +1102,41 @@ export class AppComponent {
       });
   }
 
+  badgeProgressRows(badge: Badge): Array<{
+    girl: Girl;
+    completedCount: number;
+    totalRequirements: number;
+    status: 'Started' | 'Completed';
+    awardedAt: string | null;
+  }> {
+    const totalRequirements = badge.requirements.length;
+
+    return this.state()
+      .girls.filter((girl) => girl.level === badge.level)
+      .map((girl) => {
+        const completedRequirementIds = this.completedRequirementIdsForGirl(girl.id);
+        const completedCount = badge.requirements.filter((requirement) => completedRequirementIds.has(requirement.id)).length;
+        const awardedAt =
+          (this.state().badgeAwards[girl.id] ?? []).find((award) => award.badgeId === badge.id)?.awardedAt ?? null;
+
+        return {
+          girl,
+          completedCount,
+          totalRequirements,
+          status: completedCount === totalRequirements && totalRequirements > 0 ? 'Completed' as const : 'Started' as const,
+          awardedAt
+        };
+      })
+      .filter((row) => row.completedCount > 0)
+      .sort((a, b) => {
+        if (a.status !== b.status) {
+          return a.status === 'Completed' ? -1 : 1;
+        }
+
+        return `${a.girl.firstName} ${a.girl.lastName}`.localeCompare(`${b.girl.firstName} ${b.girl.lastName}`);
+      });
+  }
+
   outstandingCompletedBadgesForGirl(girl: Girl): GirlBadgeProgress[] {
     return this.badgeProgressForGirl(girl).filter((progress) => progress.status === 'complete' && !progress.awardedAt);
   }
@@ -1041,6 +1153,10 @@ export class AppComponent {
     }
 
     return progressItems;
+  }
+
+  parentStartedBadgeProgress(girl: Girl): GirlBadgeProgress[] {
+    return this.badgeProgressForGirl(girl).filter((progress) => progress.status !== 'not-started');
   }
 
   private guardiansFromForm(
@@ -1199,6 +1315,21 @@ export class AppComponent {
       hour: 'numeric',
       minute: '2-digit'
     }).format(new Date(value));
+  }
+
+  formatEventTime(value: string): string {
+    if (!value) {
+      return 'Time TBD';
+    }
+
+    const [hours, minutes] = value.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+
+    return new Intl.DateTimeFormat([], {
+      hour: 'numeric',
+      minute: '2-digit'
+    }).format(date);
   }
 
   formatDateTime(value: string | null): string {

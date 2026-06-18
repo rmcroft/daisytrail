@@ -157,6 +157,12 @@ ion-segment-button {
   gap: 8px;
 }
 
+.rsvp-segment {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
 .email-draft-card pre {
   max-height: 180px;
   margin: 0;
@@ -172,6 +178,20 @@ ion-segment-button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.remaining-steps {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: #f7f8f4;
+  border-radius: 8px;
+}
+
+.remaining-steps ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #445149;
 }
 
 .meeting-girl-label {
@@ -205,6 +225,23 @@ ion-segment-button {
   gap: 18px;
 }
 
+.top-action-bar {
+  margin-bottom: 18px;
+  padding: 0 10px;
+}
+
+.top-action-button {
+  min-height: 54px;
+  --background: #0b8f68;
+  --background-hover: #087a59;
+  --background-activated: #087a59;
+  --border-radius: 16px;
+  --box-shadow: none;
+  --color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
 .panel {
   min-width: 0;
   padding: 18px;
@@ -218,7 +255,7 @@ ion-segment-button {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 14px;
 }
@@ -270,6 +307,7 @@ ion-segment-button {
 }
 
 .section-action-button {
+  margin-left: auto;
   min-height: 52px;
   --background: #0b8f68;
   --background-hover: #087a59;
@@ -317,6 +355,26 @@ ion-segment-button {
   border-color: rgba(11, 127, 90, 0.38);
 }
 
+.calendar-day.selected-calendar-day {
+  color: #ffffff;
+  background: #0b8f68;
+  border-color: #0b8f68;
+}
+
+.calendar-day.selected-calendar-day.admin-event-day {
+  background: #266399;
+  border-color: #266399;
+}
+
+.calendar-day.admin-event-day {
+  border-color: rgba(38, 99, 153, 0.46);
+}
+
+.calendar-day.admin-event-day i,
+.admin-event-item {
+  --background: rgba(38, 99, 153, 0.1);
+}
+
 .calendar-day i {
   position: absolute;
   bottom: 8px;
@@ -324,6 +382,23 @@ ion-segment-button {
   height: 7px;
   background: #0b8f68;
   border-radius: 999px;
+}
+
+.calendar-day.admin-event-day i {
+  background: #266399;
+}
+
+.calendar-day.selected-calendar-day i {
+  background: #ffffff;
+}
+
+.parent-tabs {
+  display: block;
+}
+
+.parent-tabs ion-segment {
+  max-width: none;
+  width: 100%;
 }
 
 .toggle-row {
@@ -533,6 +608,31 @@ ion-item {
   justify-content: space-between;
 }
 
+.badge-girl-status {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #f7f8f4;
+  border-radius: 8px;
+}
+
+.badge-girl-status h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0;
+}
+
+.badge-girl-status-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) auto minmax(120px, auto);
+  gap: 8px;
+  align-items: center;
+}
+
+.badge-girl-status-row small {
+  color: #66736c;
+}
+
 .requirement-grid {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -618,6 +718,10 @@ ol {
 
   .requirement-grid {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .badge-girl-status-row {
+    grid-template-columns: 1fr;
   }
 
   .desktop-tabs ion-segment {

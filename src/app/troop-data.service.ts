@@ -99,7 +99,7 @@ export interface Account {
   email: string;
   passwordHash: string;
   role: 'system-admin' | 'troop-admin' | 'parent';
-  status: 'active' | 'pending';
+  status: 'active' | 'pending' | 'inactive';
   troopIds: string[];
   girlIds: string[];
 }
@@ -609,6 +609,10 @@ export class TroopDataService {
       return { ok: false, message: 'Your account is pending troop leader approval.' };
     }
 
+    if (account.status === 'inactive') {
+      return { ok: false, message: 'This account is inactive. Contact a troop leader for access.' };
+    }
+
     this.state.update((current) => ({
       ...current,
       currentAccountId: account.id,
@@ -654,6 +658,38 @@ export class TroopDataService {
       ...current,
       accounts: current.accounts.map((account) =>
         account.id === accountId ? { ...account, status: 'active' as const } : account
+      )
+    }));
+    this.persist();
+  }
+
+  setAccountStatus(accountId: string, status: Account['status']): void {
+    this.state.update((current) => ({
+      ...current,
+      accounts: current.accounts.map((account) => (account.id === accountId ? { ...account, status } : account))
+    }));
+    this.persist();
+  }
+
+  updateParentGirlAssociations(accountId: string, girlIds: string[]): void {
+    const troop = this.currentTroop();
+    if (!troop) {
+      return;
+    }
+
+    const validGirlIds = new Set(troop.data.girls.map((girl) => girl.id));
+    const nextGirlIds = Array.from(new Set(girlIds.filter((girlId) => validGirlIds.has(girlId))));
+
+    this.state.update((current) => ({
+      ...current,
+      accounts: current.accounts.map((account) =>
+        account.id === accountId && account.role === 'parent'
+          ? {
+              ...account,
+              troopIds: account.troopIds.includes(troop.id) ? account.troopIds : [...account.troopIds, troop.id],
+              girlIds: nextGirlIds
+            }
+          : account
       )
     }));
     this.persist();
@@ -1108,10 +1144,11 @@ function normalizeRole(role: Account['role'] | 'leader' | undefined): Account['r
 }
 
 function normalizeState(state: AppState): AppState {
+  const accountsWithStarterAdmins = mergeAccountsByEmail(state.accounts ?? [], starterState.accounts);
   const normalizedState = {
     ...state,
     emailReminderDrafts: state.emailReminderDrafts ?? [],
-    accounts: state.accounts.map((account) => ({
+    accounts: accountsWithStarterAdmins.map((account) => ({
       ...account,
       role: normalizeRole(account.role),
       status: account.status ?? 'active',
@@ -1140,6 +1177,11 @@ function normalizeState(state: AppState): AppState {
       normalizedState.accounts
     )
   };
+}
+
+function mergeAccountsByEmail(current: Account[], additions: Account[]): Account[] {
+  const currentEmails = new Set(current.map((account) => account.email.toLowerCase()));
+  return [...current, ...additions.filter((account) => !currentEmails.has(account.email.toLowerCase()))];
 }
 
 function normalizeTroopState(state: TroopState): TroopState {

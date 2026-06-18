@@ -66,11 +66,12 @@
         <section class="hero-band">
           <div>
             <p class="eyebrow">{{ currentTroopName() }} · Parent Portal</p>
-            <h1>Upcoming events and RSVPs</h1>
+            <h1>{{ parentHeroTitle() }}</h1>
           </div>
         </section>
 
-        <section class="two-column">
+        @if (parentSegment() === 'events') {
+        <section class="single-column">
           <div class="panel">
             <div class="panel-heading">
               <div>
@@ -112,13 +113,21 @@
                   <div class="rsvp-row">
                     <div>
                       <strong>{{ girl.firstName }}</strong>
-                      <p>{{ rsvpLabel(event, girl.id) }}</p>
                     </div>
-                    <div class="rsvp-actions">
-                      <ion-button size="small" type="button" (click)="recordRsvp(event, girl.id, 'yes')">Yes</ion-button>
-                      <ion-button size="small" type="button" color="secondary" (click)="recordRsvp(event, girl.id, 'maybe')">Maybe</ion-button>
-                      <ion-button size="small" type="button" color="medium" (click)="recordRsvp(event, girl.id, 'no')">No</ion-button>
-                    </div>
+                    <ion-segment
+                      class="rsvp-segment"
+                      [value]="rsvpStatusValue(event, girl.id)"
+                      (ionChange)="recordRsvp(event, girl.id, $any($event.detail.value))">
+                      <ion-segment-button value="yes">
+                        <ion-label>Yes</ion-label>
+                      </ion-segment-button>
+                      <ion-segment-button value="maybe">
+                        <ion-label>Maybe</ion-label>
+                      </ion-segment-button>
+                      <ion-segment-button value="no">
+                        <ion-label>No</ion-label>
+                      </ion-segment-button>
+                    </ion-segment>
                   </div>
                 }
               </div>
@@ -127,8 +136,64 @@
             }
           </div>
         </section>
+        } @else {
+          <section class="single-column">
+            @for (girl of parentGirls(); track girl.id) {
+              <div class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <p class="eyebrow">{{ girl.level }} Badges</p>
+                    <h2>{{ girl.firstName }} {{ girl.lastName }}</h2>
+                  </div>
+                </div>
+                @for (progress of parentStartedBadgeProgress(girl); track progress.badge.id) {
+                  <div class="progress-card">
+                    <h3>{{ progress.badge.title }}</h3>
+                    <div class="progress-meta">
+                      <ion-badge [color]="progress.status === 'complete' ? 'success' : 'warning'">
+                        {{ progress.status === 'complete' ? 'Completed' : 'Started' }}
+                      </ion-badge>
+                      @if (progress.awardedAt) {
+                        <ion-badge color="primary">Given {{ progress.awardedAt }}</ion-badge>
+                      } @else if (progress.status === 'complete') {
+                        <ion-badge color="medium">Not given</ion-badge>
+                      }
+                    </div>
+                    <p>{{ progress.completedCount }} of {{ progress.totalRequirements }} requirements complete</p>
+                    @if (progress.remainingRequirements.length > 0) {
+                      <div class="remaining-steps">
+                        <strong>Steps left</strong>
+                        <ul>
+                          @for (requirement of progress.remainingRequirements; track requirement.id) {
+                            <li>{{ requirement.title }}</li>
+                          }
+                        </ul>
+                      </div>
+                    }
+                  </div>
+                } @empty {
+                  <p class="empty-copy">No badges have been started yet.</p>
+                }
+              </div>
+            }
+          </section>
+        }
       </main>
     </ion-content>
+    <ion-footer class="mobile-tabs parent-tabs">
+      <ion-toolbar>
+        <ion-segment [value]="parentSegment()" (ionChange)="parentSegment.set($any($event.detail.value))">
+          <ion-segment-button value="events">
+            <ion-icon name="calendar-outline"></ion-icon>
+            <ion-label>Events</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="badges">
+            <ion-icon name="ribbon-outline"></ion-icon>
+            <ion-label>Badges</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </ion-toolbar>
+    </ion-footer>
   } @else {
     <ion-header translucent="true">
       <ion-toolbar>
@@ -264,7 +329,7 @@
             @if (eventCompleteMessage()) {
               <p class="success-message">{{ eventCompleteMessage() }}</p>
             }
-            <ion-button type="button" color="primary" expand="block" (click)="completeEvent(event)">
+            <ion-button type="button" color="secondary" expand="block" (click)="completeEvent(event)">
               <ion-icon slot="start" name="checkmark-circle"></ion-icon>
               {{ event.completedAt ? 'Update Completions' : 'Complete Event' }}
             </ion-button>
@@ -273,6 +338,14 @@
       }
 
       @if (selectedSegment() === 'girls') {
+        @if (isSystemAdmin() || isTroopAdmin()) {
+          <section class="top-action-bar">
+            <ion-button type="button" class="top-action-button" expand="block" (click)="openBadgeAwardEditor()">
+              <ion-icon slot="start" name="medal-outline"></ion-icon>
+              Credit Badge
+            </ion-button>
+          </section>
+        }
         <section class="single-column">
           <div class="panel">
             <div class="panel-heading">
@@ -404,7 +477,13 @@
       }
 
       @if (selectedSegment() === 'schedule') {
-        <section class="two-column">
+        <section class="top-action-bar">
+          <ion-button type="button" class="top-action-button" expand="block" (click)="openAddEventModal()">
+            <ion-icon slot="start" name="calendar-outline"></ion-icon>
+            Add Event
+          </ion-button>
+        </section>
+        <section class="single-column">
           <div class="panel">
             <div class="panel-heading">
               <div>
@@ -422,7 +501,13 @@
               }
               @for (day of calendarDays(); track $index) {
                 @if (day) {
-                  <button type="button" class="calendar-day" [class.has-events]="day.eventCount > 0">
+                  <button
+                    type="button"
+                    class="calendar-day"
+                    [class.has-events]="day.eventCount > 0"
+                    [class.admin-event-day]="day.adminOnlyCount > 0"
+                    [class.selected-calendar-day]="selectedCalendarDate() === day.date"
+                    (click)="selectCalendarDate(day.date)">
                     <span>{{ day.day }}</span>
                     @if (day.eventCount > 0) {
                       <i aria-hidden="true"></i>
@@ -439,24 +524,32 @@
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Meetings and Activities</p>
-                <h2>Schedule</h2>
+                <h2>{{ selectedCalendarDate() }}</h2>
               </div>
-              <ion-button type="button" class="section-action-button" (click)="openAddEventModal()">
-                <ion-icon slot="start" name="calendar-outline"></ion-icon>
-                Add Event
-              </ion-button>
             </div>
             <ion-list>
-              @for (event of upcomingEvents(); track event.id) {
-                <ion-item button="true" [class.selected-item]="isSelectedEvent(event)" (click)="startEditEvent(event)">
+              @for (event of selectedCalendarEvents(); track event.id) {
+                <ion-item
+                  button="true"
+                  [class.selected-item]="isSelectedEvent(event)"
+                  [class.admin-event-item]="event.adminOnly"
+                  (click)="startEditEvent(event)">
                   <ion-label>
                     <h3>{{ event.title }}</h3>
-                    <p>{{ event.date }} at {{ event.startTime }} · {{ event.location || 'Location TBD' }}</p>
-                    <p>{{ event.badgeIds.length }} badge focus areas</p>
+                    <p>{{ formatEventTime(event.startTime) }} · {{ event.location || 'Location TBD' }}</p>
+                    @if (event.badgeIds.length > 0) {
+                      <p>{{ event.badgeIds.length }} badge focus areas</p>
+                    }
+                    @if (event.adminOnly) {
+                      <p>Troop admins only</p>
+                    }
                   </ion-label>
-                  <ion-button slot="end" fill="clear" aria-label="Edit event" (click)="$event.stopPropagation(); startEditEvent(event)">
-                    <ion-icon slot="icon-only" name="create-outline"></ion-icon>
-                  </ion-button>
+                </ion-item>
+              } @empty {
+                <ion-item>
+                  <ion-label>
+                    <p>No events are scheduled for this day.</p>
+                  </ion-label>
                 </ion-item>
               }
             </ion-list>
@@ -466,56 +559,46 @@
       }
 
       @if (selectedSegment() === 'badges') {
-        <section class="two-column">
-          <div class="stacked-panels">
-            <form class="panel form-panel" [formGroup]="badgeAwardForm" (ngSubmit)="awardBadge()">
-              <div class="panel-heading">
-                <div>
-                  <p class="eyebrow">Outside Meeting</p>
-                  <h2>Credit Badge to Girl</h2>
-                </div>
-                <ion-icon name="ribbon-outline"></ion-icon>
-              </div>
-              <div class="form-grid">
-                <ion-select label="Girl Scout" label-placement="stacked" formControlName="girlId">
-                  @for (girl of state().girls; track girl.id) {
-                    <ion-select-option [value]="girl.id">{{ girl.firstName }} {{ girl.lastName }}</ion-select-option>
-                  }
-                </ion-select>
-                <ion-select label="Badge" label-placement="stacked" formControlName="badgeId">
-                  @for (badge of troopBadges(); track badge.id) {
-                    <ion-select-option [value]="badge.id">{{ badge.title }}</ion-select-option>
-                  }
-                </ion-select>
-                <ion-input label="Completed date" label-placement="stacked" formControlName="awardedAt" type="date"></ion-input>
-              </div>
-              <ion-textarea label="Note" label-placement="stacked" formControlName="note" auto-grow="true"></ion-textarea>
-              <ion-button type="submit" expand="block">
-                <ion-icon slot="start" name="save-outline"></ion-icon>
-                Credit Badge
-              </ion-button>
-            </form>
-          </div>
-
+        <section class="top-action-bar">
+          <ion-button type="button" class="top-action-button" expand="block" (click)="openBadgeAwardEditor()">
+            <ion-icon slot="start" name="medal-outline"></ion-icon>
+            Credit Badge
+          </ion-button>
+        </section>
+        <section class="single-column">
           <div class="panel">
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Tracked Requirements</p>
-                <h2>{{ troopBadges().length }} Badges</h2>
+                <h2>{{ filteredTroopBadges().length }} Badges</h2>
               </div>
-              <ion-button type="button" class="section-action-button" (click)="openAddBadgeModal()">
-                <ion-icon slot="start" name="ribbon-outline"></ion-icon>
-                Add Badge
-              </ion-button>
+              @if (isSystemAdmin()) {
+                <ion-button type="button" class="section-action-button" (click)="openAddBadgeModal()">
+                  <ion-icon slot="start" name="ribbon-outline"></ion-icon>
+                  Add Badge
+                </ion-button>
+              }
             </div>
-            @for (badge of troopBadges(); track badge.id) {
+            @if (currentTroopLevels().length > 1) {
+              <ion-segment
+                class="badge-level-segment catalog-level-segment"
+                [value]="badgeCatalogLevelFilter()"
+                (ionChange)="badgeCatalogLevelFilter.set($any($event.detail.value))"
+                scrollable="true">
+                <ion-segment-button value="All">
+                  <ion-label>All levels</ion-label>
+                </ion-segment-button>
+                @for (level of currentTroopLevels(); track level) {
+                  <ion-segment-button [value]="level">
+                    <ion-label>{{ level }}</ion-label>
+                  </ion-segment-button>
+                }
+              </ion-segment>
+            }
+            @for (badge of filteredTroopBadges(); track badge.id) {
               <div class="badge-card">
                 <div class="badge-card-heading">
                   <h3>{{ badge.title }}</h3>
-                  <ion-button type="button" fill="clear" aria-label="Edit badge" (click)="startEditBadge(badge)">
-                    <ion-icon slot="start" name="create-outline"></ion-icon>
-                    Edit
-                  </ion-button>
                 </div>
                 <div>
                   <p>{{ badge.level }} · {{ badge.topic }} · {{ badge.requirements.length }} requirements</p>
@@ -525,6 +608,25 @@
                     <li>{{ requirement.title }}</li>
                   }
                 </ol>
+                @if (badgeProgressRows(badge).length > 0) {
+                  <div class="badge-girl-status">
+                    <h4>Girl progress</h4>
+                    @for (row of badgeProgressRows(badge); track row.girl.id) {
+                      <div class="badge-girl-status-row">
+                        <span>{{ row.girl.firstName }} {{ row.girl.lastName }}</span>
+                        <ion-badge [color]="row.status === 'Completed' ? 'success' : 'warning'">{{ row.status }}</ion-badge>
+                        <small>
+                          {{ row.completedCount }} of {{ row.totalRequirements }}
+                          @if (row.awardedAt) {
+                            · Given {{ row.awardedAt }}
+                          } @else if (row.status === 'Completed') {
+                            · Not given
+                          }
+                        </small>
+                      </div>
+                    }
+                  </div>
+                }
               </div>
             }
           </div>
@@ -593,10 +695,28 @@
                 <ion-item>
                   <ion-label>
                     <h3>{{ account.name || account.email }}</h3>
-                    <p>{{ account.email }} · {{ account.role }} · {{ account.status }}</p>
+                    <p>{{ account.email }} · {{ account.role }} · {{ accountStatusLabel(account) }}</p>
+                    @if (account.role === 'parent') {
+                      <p>Girls: {{ parentGirlNames(account) }}</p>
+                    }
                   </ion-label>
+                  @if (account.role === 'parent' && (isSystemAdmin() || isTroopAdmin())) {
+                    <ion-button slot="end" type="button" size="small" fill="outline" (click)="openParentGirlEditor(account)">
+                      Girls
+                    </ion-button>
+                  }
                   @if (account.status === 'pending' && (isSystemAdmin() || isTroopAdmin())) {
                     <ion-button slot="end" type="button" size="small" (click)="approveAccount(account.id)">Approve</ion-button>
+                  }
+                  @if (account.status === 'active' && account.id !== currentAccount()?.id && (isSystemAdmin() || isTroopAdmin())) {
+                    <ion-button slot="end" type="button" size="small" color="medium" (click)="inactivateAccount(account.id)">
+                      Disable
+                    </ion-button>
+                  }
+                  @if (account.status === 'inactive' && (isSystemAdmin() || isTroopAdmin())) {
+                    <ion-button slot="end" type="button" size="small" (click)="activateAccount(account.id)">
+                      Enable
+                    </ion-button>
                   }
                 </ion-item>
               }
@@ -819,7 +939,7 @@
                     <ion-icon slot="start" name="save-outline"></ion-icon>
                     Save Event
                   </ion-button>
-                  <ion-button type="button" color="success" (click)="completeEvent(event)">
+                  <ion-button type="button" color="secondary" (click)="completeEvent(event)">
                     <ion-icon slot="start" name="checkmark-circle"></ion-icon>
                     {{ event.completedAt ? 'Update Completions' : 'Complete Event' }}
                   </ion-button>
@@ -1043,6 +1163,69 @@
                 </div>
               </form>
             }
+          </div>
+        </ion-content>
+      </ng-template>
+    </ion-modal>
+    <ion-modal [isOpen]="badgeAwardEditorOpen()" (didDismiss)="closeBadgeAwardEditor()">
+      <ng-template>
+        <ion-header>
+          <ion-toolbar>
+            <ion-buttons slot="start">
+              <ion-button type="button" (click)="closeBadgeAwardEditor()">Cancel</ion-button>
+            </ion-buttons>
+            <ion-title>Credit Badge</ion-title>
+          </ion-toolbar>
+        </ion-header>
+        <ion-content class="badge-editor-modal">
+          <div class="badge-editor-modal-content">
+            <form class="form-panel" [formGroup]="badgeAwardForm" (ngSubmit)="awardBadge()">
+              <div class="form-grid">
+                <ion-select label="Girl Scout" label-placement="stacked" formControlName="girlId">
+                  @for (girl of state().girls; track girl.id) {
+                    <ion-select-option [value]="girl.id">{{ girl.firstName }} {{ girl.lastName }}</ion-select-option>
+                  }
+                </ion-select>
+                <ion-select label="Badge" label-placement="stacked" formControlName="badgeId">
+                  @for (badge of troopBadges(); track badge.id) {
+                    <ion-select-option [value]="badge.id">{{ badge.title }}</ion-select-option>
+                  }
+                </ion-select>
+                <ion-input label="Completed date" label-placement="stacked" formControlName="awardedAt" type="date"></ion-input>
+              </div>
+              <ion-textarea label="Note" label-placement="stacked" formControlName="note" auto-grow="true"></ion-textarea>
+              <ion-button type="submit">
+                <ion-icon slot="start" name="save-outline"></ion-icon>
+                Credit Badge
+              </ion-button>
+            </form>
+          </div>
+        </ion-content>
+      </ng-template>
+    </ion-modal>
+    <ion-modal [isOpen]="parentGirlEditorOpen()" (didDismiss)="closeParentGirlEditor()">
+      <ng-template>
+        <ion-header>
+          <ion-toolbar>
+            <ion-buttons slot="start">
+              <ion-button type="button" (click)="closeParentGirlEditor()">Cancel</ion-button>
+            </ion-buttons>
+            <ion-title>Parent Girls</ion-title>
+          </ion-toolbar>
+        </ion-header>
+        <ion-content class="editor-modal">
+          <div class="editor-modal-content">
+            <form class="form-panel" [formGroup]="parentGirlAssociationForm" (ngSubmit)="saveParentGirlAssociations()">
+              <ion-select label="Associated girls" label-placement="stacked" formControlName="girlIds" multiple="true">
+                @for (girl of state().girls; track girl.id) {
+                  <ion-select-option [value]="girl.id">{{ girl.firstName }} {{ girl.lastName }}</ion-select-option>
+                }
+              </ion-select>
+              <ion-button type="submit">
+                <ion-icon slot="start" name="save-outline"></ion-icon>
+                Save Girls
+              </ion-button>
+            </form>
           </div>
         </ion-content>
       </ng-template>
