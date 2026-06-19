@@ -1,5 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
-import badgeCatalogData from '../assets/badge-catalog.json';
+import * as badgeCatalogData from '../assets/badge-catalog.json';
 
 export type ScoutLevel = 'Daisy' | 'Brownie' | 'Junior' | 'Cadette' | 'Senior' | 'Ambassador';
 
@@ -151,7 +151,8 @@ const emptyTroopState: TroopState = {
 };
 
 const badgeSource = 'https://www.girlscouts.org/en/members/for-girl-scouts/badges-journeys-awards/badge-explorer.html';
-const importedBadgeCatalog = badgeCatalogData as unknown as Badge[];
+const badgeCatalogModule = badgeCatalogData as unknown as { default?: Badge[] };
+const importedBadgeCatalog = badgeCatalogModule.default ?? (badgeCatalogData as unknown as Badge[]);
 
 const starterTroopData: TroopState = {
   girls: [
@@ -1109,8 +1110,26 @@ export class TroopDataService {
     }));
   }
 
+  creditBadge(girlId: string, badgeId: string): void {
+    const badge = this.data().badges.find((item) => item.id === badgeId);
+    if (!badge) {
+      return;
+    }
+
+    this.patchTroopData({
+      manualCompletions: {
+        ...this.data().manualCompletions,
+        [girlId]: {
+          ...(this.data().manualCompletions[girlId] ?? {}),
+          ...Object.fromEntries(badge.requirements.map((requirement) => [requirement.id, true]))
+        }
+      }
+    });
+  }
+
   awardBadge(girlId: string, badgeId: string, awardedAt: string, note: string): void {
     const currentAwards = this.data().badgeAwards[girlId] ?? [];
+    const badge = this.data().badges.find((item) => item.id === badgeId);
     const existingAwardIndex = currentAwards.findIndex((award) => award.badgeId === badgeId);
     const award: BadgeAward = {
       badgeId,
@@ -1126,6 +1145,13 @@ export class TroopDataService {
       badgeAwards: {
         ...this.data().badgeAwards,
         [girlId]: nextAwards
+      },
+      manualCompletions: {
+        ...this.data().manualCompletions,
+        [girlId]: {
+          ...(this.data().manualCompletions[girlId] ?? {}),
+          ...Object.fromEntries((badge?.requirements ?? []).map((requirement) => [requirement.id, true]))
+        }
       }
     });
   }
@@ -1355,11 +1381,20 @@ function mergeAccountsByEmail(current: Account[], additions: Account[]): Account
 }
 
 function normalizeTroopState(state: TroopState): TroopState {
+  const badgeAwards = state.badgeAwards ?? {};
+  const givenBadgeAwards = Object.fromEntries(
+    Object.entries(badgeAwards).map(([girlId, awards]) => [
+      girlId,
+      awards.filter((award) =>
+        award.note === 'Badge given to Girl Scout.' || award.note === 'Outstanding completed badge given to Girl Scout.'
+      )
+    ])
+  );
   return {
     ...state,
     girls: state.girls.map(normalizeGirl),
-    badgeAwards: state.badgeAwards ?? {},
-    manualCompletions: state.manualCompletions ?? {},
+    badgeAwards: givenBadgeAwards,
+    manualCompletions: addAwardedBadgeRequirements(state.badges, badgeAwards, state.manualCompletions ?? {}),
     events: state.events.map((event) => ({
       ...event,
       evidenceNotes: event.evidenceNotes ?? '',
@@ -1371,6 +1406,25 @@ function normalizeTroopState(state: TroopState): TroopState {
       completedAt: event.completedAt ?? null
     }))
   };
+}
+
+function addAwardedBadgeRequirements(
+  badges: Badge[],
+  badgeAwards: Record<string, BadgeAward[]>,
+  manualCompletions: Record<string, Record<string, boolean>>
+): Record<string, Record<string, boolean>> {
+  return Object.entries(badgeAwards).reduce<Record<string, Record<string, boolean>>>((allCompletions, [girlId, awards]) => {
+    const awardedRequirementIds = awards.flatMap((award) =>
+      badges.find((badge) => badge.id === award.badgeId)?.requirements.map((requirement) => requirement.id) ?? []
+    );
+    return {
+      ...allCompletions,
+      [girlId]: {
+        ...(allCompletions[girlId] ?? {}),
+        ...Object.fromEntries(awardedRequirementIds.map((requirementId) => [requirementId, true]))
+      }
+    };
+  }, structuredClone(manualCompletions));
 }
 
 function normalizeGirl(girl: Girl): Girl {

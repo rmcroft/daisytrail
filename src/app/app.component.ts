@@ -101,8 +101,12 @@ export class AppComponent {
   readonly badgeCatalogLevelFilter = signal<ScoutLevel | 'All'>('All');
   readonly eventBadgeSearch = signal('');
   readonly eventBadgePickerLevelFilter = signal<ScoutLevel | 'All'>('All');
-  readonly activeEventBadgePicker = signal<'create' | 'edit' | null>(null);
+  readonly activeEventBadgePicker = signal<'create' | 'edit' | 'award' | null>(null);
   readonly pendingEventBadgeIds = signal<string[]>([]);
+  readonly badgeAwardGirlPickerOpen = signal(false);
+  readonly badgeAwardGirlSearch = signal('');
+  readonly badgeAwardGirlLevelFilter = signal<ScoutLevel | 'All'>('All');
+  readonly pendingBadgeAwardGirlId = signal('');
   readonly badgeSourceUrl = 'https://www.girlscouts.org/en/members/for-girl-scouts/badges-journeys-awards/badge-explorer.html';
 
   readonly visibleEvents = computed(() => {
@@ -236,6 +240,16 @@ export class AppComponent {
         badge.level.toLowerCase().includes(search);
 
       return matchesLevel && matchesSearch;
+    });
+  });
+
+  readonly badgeAwardGirlOptions = computed(() => {
+    const search = this.badgeAwardGirlSearch().trim().toLowerCase();
+
+    return this.state().girls.filter((girl) => {
+      const matchesLevel = this.badgeAwardGirlLevelFilter() === 'All' || girl.level === this.badgeAwardGirlLevelFilter();
+      const fullName = `${girl.firstName} ${girl.lastName}`.toLowerCase();
+      return matchesLevel && (!search || fullName.includes(search) || girl.level.toLowerCase().includes(search));
     });
   });
 
@@ -865,7 +879,7 @@ export class AppComponent {
     }
 
     const form = this.badgeAwardForm.getRawValue();
-    this.troopData.awardBadge(form.girlId, form.badgeId, form.awardedAt, form.note);
+    this.troopData.creditBadge(form.girlId, form.badgeId);
     this.badgeAwardForm.reset({ awardedAt: new Date().toISOString().slice(0, 10) });
     this.closeBadgeAwardEditor();
   }
@@ -878,6 +892,33 @@ export class AppComponent {
   closeBadgeAwardEditor(): void {
     this.badgeAwardEditorOpen.set(false);
     this.badgeAwardForm.reset({ awardedAt: new Date().toISOString().slice(0, 10) });
+    this.closeBadgeAwardGirlPicker();
+  }
+
+  openBadgeAwardGirlPicker(): void {
+    this.pendingBadgeAwardGirlId.set(this.badgeAwardForm.getRawValue().girlId);
+    this.badgeAwardGirlSearch.set('');
+    this.badgeAwardGirlLevelFilter.set('All');
+    this.badgeAwardGirlPickerOpen.set(true);
+  }
+
+  closeBadgeAwardGirlPicker(): void {
+    this.badgeAwardGirlPickerOpen.set(false);
+    this.pendingBadgeAwardGirlId.set('');
+    this.badgeAwardGirlSearch.set('');
+    this.badgeAwardGirlLevelFilter.set('All');
+  }
+
+  applyBadgeAwardGirlPicker(): void {
+    this.badgeAwardForm.get('girlId')?.setValue(this.pendingBadgeAwardGirlId());
+    this.badgeAwardForm.get('girlId')?.markAsDirty();
+    this.closeBadgeAwardGirlPicker();
+  }
+
+  selectedAwardGirlSummary(): string {
+    const girlId = this.badgeAwardForm.getRawValue().girlId;
+    const girl = this.state().girls.find((candidate) => candidate.id === girlId);
+    return girl ? `${girl.firstName} ${girl.lastName} · ${girl.level}` : 'Search for a Girl Scout';
   }
 
   markBadgeGiven(girlId: string, badgeId: string): void {
@@ -972,11 +1013,14 @@ export class AppComponent {
     control?.markAsDirty();
   }
 
-  openEventBadgePicker(target: 'create' | 'edit'): void {
-    const form = target === 'create' ? this.eventForm : this.editEventForm;
+  openEventBadgePicker(target: 'create' | 'edit' | 'award'): void {
+    const selectedBadgeIds = target === 'award'
+      ? [this.badgeAwardForm.getRawValue().badgeId].filter(Boolean)
+      : [...((target === 'create' ? this.eventForm : this.editEventForm).get('badgeIds')?.value ?? [])];
+
     this.eventBadgeSearch.set('');
     this.eventBadgePickerLevelFilter.set('All');
-    this.pendingEventBadgeIds.set([...(form.get('badgeIds')?.value ?? [])]);
+    this.pendingEventBadgeIds.set(selectedBadgeIds);
     this.activeEventBadgePicker.set(target);
   }
 
@@ -993,6 +1037,13 @@ export class AppComponent {
       return;
     }
 
+    if (target === 'award') {
+      this.badgeAwardForm.get('badgeId')?.setValue(this.pendingEventBadgeIds()[0] ?? '');
+      this.badgeAwardForm.get('badgeId')?.markAsDirty();
+      this.closeEventBadgePicker();
+      return;
+    }
+
     const form = target === 'create' ? this.eventForm : this.editEventForm;
     form.get('badgeIds')?.setValue(this.pendingEventBadgeIds());
     form.get('badgeIds')?.markAsDirty();
@@ -1004,11 +1055,21 @@ export class AppComponent {
   }
 
   togglePendingEventBadge(badgeId: string, checked?: boolean): void {
+    if (this.activeEventBadgePicker() === 'award') {
+      this.pendingEventBadgeIds.set(checked === false ? [] : [badgeId]);
+      return;
+    }
+
     const current = this.pendingEventBadgeIds();
     const shouldSelect = checked ?? !current.includes(badgeId);
     this.pendingEventBadgeIds.set(
       shouldSelect ? Array.from(new Set([...current, badgeId])) : current.filter((id) => id !== badgeId)
     );
+  }
+
+  selectedAwardBadgeSummary(): string {
+    const badgeId = this.badgeAwardForm.getRawValue().badgeId;
+    return this.state().badges.find((badge) => badge.id === badgeId)?.title ?? 'Search for a badge';
   }
 
   toggleRequirement(eventId: string, girlId: string, requirementId: string): void {

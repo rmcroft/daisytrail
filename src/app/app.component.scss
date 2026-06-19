@@ -23,15 +23,25 @@ ion-segment-button {
   min-height: 56px;
 }
 
-.mobile-tabs ion-segment {
-  max-width: none;
-  width: 100%;
+.mobile-tabs ion-tab-bar {
+  --background: #ffffff;
+  border-top: 1px solid rgba(28, 70, 52, 0.14);
+  padding: 5px 4px max(5px, env(safe-area-inset-bottom));
+  box-shadow: 0 -6px 22px rgba(24, 55, 42, 0.08);
 }
 
-.mobile-tabs ion-segment-button {
-  flex: 1 1 0;
+.mobile-tabs ion-tab-button {
+  --color: #6b776f;
+  --color-selected: #087a58;
+  --padding-end: 2px;
+  --padding-start: 2px;
   min-width: 0;
-  min-height: 54px;
+  min-height: 58px;
+  font-weight: 650;
+}
+
+.mobile-tabs ion-tab-button ion-icon {
+  font-size: 1.35rem;
 }
 
 .progress-segment {
@@ -44,6 +54,7 @@ ion-segment-button {
 }
 
 .mobile-tabs ion-label {
+  margin-top: 3px;
   font-size: 0.68rem;
 }
 
@@ -394,11 +405,6 @@ ion-segment-button {
 
 .parent-tabs {
   display: block;
-}
-
-.parent-tabs ion-segment {
-  max-width: none;
-  width: 100%;
 }
 
 .toggle-row {

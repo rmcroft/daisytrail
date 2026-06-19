@@ -235,22 +235,20 @@
       </ng-template>
     </ion-modal>
     <ion-footer class="mobile-tabs parent-tabs">
-      <ion-toolbar>
-        <ion-segment [value]="parentSegment()" (ionChange)="parentSegment.set($any($event.detail.value))">
-          <ion-segment-button value="events">
-            <ion-icon name="calendar-outline"></ion-icon>
-            <ion-label>Events</ion-label>
-          </ion-segment-button>
-          <ion-segment-button value="badges">
-            <ion-icon name="ribbon-outline"></ion-icon>
-            <ion-label>Badges</ion-label>
-          </ion-segment-button>
-          <ion-segment-button value="girls">
-            <ion-icon name="people-outline"></ion-icon>
-            <ion-label>My Girl</ion-label>
-          </ion-segment-button>
-        </ion-segment>
-      </ion-toolbar>
+      <ion-tab-bar>
+        <ion-tab-button tab="events" [selected]="parentSegment() === 'events'" (click)="parentSegment.set('events')">
+          <ion-icon name="calendar-outline"></ion-icon>
+          <ion-label>Events</ion-label>
+        </ion-tab-button>
+        <ion-tab-button tab="badges" [selected]="parentSegment() === 'badges'" (click)="parentSegment.set('badges')">
+          <ion-icon name="ribbon-outline"></ion-icon>
+          <ion-label>Badges</ion-label>
+        </ion-tab-button>
+        <ion-tab-button tab="girls" [selected]="parentSegment() === 'girls'" (click)="parentSegment.set('girls')">
+          <ion-icon name="people-outline"></ion-icon>
+          <ion-label>My Girl</ion-label>
+        </ion-tab-button>
+      </ion-tab-bar>
     </ion-footer>
   } @else {
     <ion-header translucent="true">
@@ -1118,7 +1116,7 @@
             <ion-buttons slot="start">
               <ion-button type="button" (click)="closeEventBadgePicker()">Cancel</ion-button>
             </ion-buttons>
-            <ion-title>Badges for this event</ion-title>
+            <ion-title>{{ activeEventBadgePicker() === 'award' ? 'Select Badge' : 'Badges for this event' }}</ion-title>
             <ion-buttons slot="end">
               <ion-button type="button" strong="true" (click)="applyEventBadgePicker()">Done</ion-button>
             </ion-buttons>
@@ -1127,7 +1125,11 @@
         <ion-content class="badge-picker-modal">
           <div class="badge-picker-modal-content">
             <div class="badge-picker-heading">
-              <strong>{{ pendingEventBadgeIds().length }} selected</strong>
+              <strong>
+                {{ activeEventBadgePicker() === 'award'
+                  ? (pendingEventBadgeIds().length ? '1 badge selected' : 'Select a badge')
+                  : pendingEventBadgeIds().length + ' selected' }}
+              </strong>
             </div>
             <ion-segment
               class="badge-level-segment"
@@ -1249,6 +1251,68 @@
         </ion-content>
       </ng-template>
     </ion-modal>
+    <ion-modal [isOpen]="badgeAwardGirlPickerOpen()" (didDismiss)="closeBadgeAwardGirlPicker()">
+      <ng-template>
+        <ion-header>
+          <ion-toolbar>
+            <ion-buttons slot="start">
+              <ion-button type="button" (click)="closeBadgeAwardGirlPicker()">Cancel</ion-button>
+            </ion-buttons>
+            <ion-title>Select Girl Scout</ion-title>
+            <ion-buttons slot="end">
+              <ion-button type="button" strong="true" (click)="applyBadgeAwardGirlPicker()">Done</ion-button>
+            </ion-buttons>
+          </ion-toolbar>
+        </ion-header>
+        <ion-content class="badge-picker-modal">
+          <div class="badge-picker-modal-content">
+            <div class="badge-picker-heading">
+              <strong>{{ pendingBadgeAwardGirlId() ? '1 Girl Scout selected' : 'Select a Girl Scout' }}</strong>
+            </div>
+            <ion-segment
+              class="badge-level-segment"
+              [value]="badgeAwardGirlLevelFilter()"
+              (ionChange)="badgeAwardGirlLevelFilter.set($any($event.detail.value))"
+              scrollable="true">
+              <ion-segment-button value="All">
+                <ion-label>All levels</ion-label>
+              </ion-segment-button>
+              @for (level of currentTroopLevels(); track level) {
+                <ion-segment-button [value]="level">
+                  <ion-label>{{ level }}</ion-label>
+                </ion-segment-button>
+              }
+            </ion-segment>
+            <ion-input
+              label="Search Girl Scouts"
+              label-placement="stacked"
+              [value]="badgeAwardGirlSearch()"
+              (ionInput)="badgeAwardGirlSearch.set($any($event.target).value || '')">
+            </ion-input>
+            <div class="badge-picker-list badge-picker-list-modal">
+              @for (girl of badgeAwardGirlOptions(); track girl.id) {
+                <button type="button" class="badge-picker-row" (click)="pendingBadgeAwardGirlId.set(girl.id)">
+                  <ion-checkbox
+                    [checked]="pendingBadgeAwardGirlId() === girl.id"
+                    (click)="$event.stopPropagation()"
+                    (ionChange)="pendingBadgeAwardGirlId.set($any($event.detail.checked) ? girl.id : '')"
+                    [attr.aria-label]="'Select ' + girl.firstName + ' ' + girl.lastName">
+                  </ion-checkbox>
+                  <span>
+                    @if (badgeAwardGirlLevelFilter() === 'All') {
+                      {{ girl.level }} ·
+                    }
+                    {{ girl.firstName }} {{ girl.lastName }}
+                  </span>
+                </button>
+              } @empty {
+                <p class="empty-copy badge-picker-empty">No Girl Scouts match your search.</p>
+              }
+            </div>
+          </div>
+        </ion-content>
+      </ng-template>
+    </ion-modal>
     <ion-modal [isOpen]="badgeAwardEditorOpen()" (didDismiss)="closeBadgeAwardEditor()">
       <ng-template>
         <ion-header>
@@ -1263,16 +1327,20 @@
           <div class="badge-editor-modal-content">
             <form class="form-panel" [formGroup]="badgeAwardForm" (ngSubmit)="awardBadge()">
               <div class="form-grid">
-                <ion-select label="Girl Scout" label-placement="stacked" formControlName="girlId">
-                  @for (girl of state().girls; track girl.id) {
-                    <ion-select-option [value]="girl.id">{{ girl.firstName }} {{ girl.lastName }}</ion-select-option>
-                  }
-                </ion-select>
-                <ion-select label="Badge" label-placement="stacked" formControlName="badgeId">
-                  @for (badge of troopBadges(); track badge.id) {
-                    <ion-select-option [value]="badge.id">{{ badge.title }}</ion-select-option>
-                  }
-                </ion-select>
+                <button type="button" class="badge-picker-trigger" (click)="openBadgeAwardGirlPicker()">
+                  <span>
+                    <strong>Girl Scout</strong>
+                    <small>{{ selectedAwardGirlSummary() }}</small>
+                  </span>
+                  <em>{{ badgeAwardForm.getRawValue().girlId ? 'Change' : 'Search' }}</em>
+                </button>
+                <button type="button" class="badge-picker-trigger" (click)="openEventBadgePicker('award')">
+                  <span>
+                    <strong>Badge</strong>
+                    <small>{{ selectedAwardBadgeSummary() }}</small>
+                  </span>
+                  <em>{{ badgeAwardForm.getRawValue().badgeId ? 'Change' : 'Search' }}</em>
+                </button>
                 <ion-input label="Completed date" label-placement="stacked" formControlName="awardedAt" type="date"></ion-input>
               </div>
               <ion-textarea label="Note" label-placement="stacked" formControlName="note" auto-grow="true"></ion-textarea>
@@ -1313,32 +1381,36 @@
       </ng-template>
     </ion-modal>
     <ion-footer class="mobile-tabs">
-      <ion-toolbar>
-        <ion-segment [value]="selectedSegment()" (ionChange)="setSelectedSegment($any($event.detail.value))">
-          @if (!isSystemAdmin()) {
-            <ion-segment-button value="dashboard">
-              <ion-icon name="clipboard-outline"></ion-icon>
-            </ion-segment-button>
-          }
-          <ion-segment-button value="girls">
-            <ion-icon name="people-outline"></ion-icon>
-          </ion-segment-button>
-          <ion-segment-button value="schedule">
-            <ion-icon name="calendar-outline"></ion-icon>
-          </ion-segment-button>
-          <ion-segment-button value="badges">
-            <ion-icon name="ribbon-outline"></ion-icon>
-          </ion-segment-button>
-          @if (isTroopAdmin() || isSystemAdmin()) {
-            <ion-segment-button value="toBuy">
-              <ion-icon name="medal-outline"></ion-icon>
-            </ion-segment-button>
-          }
-          <ion-segment-button value="troops">
-            <ion-icon name="shield-checkmark-outline"></ion-icon>
-          </ion-segment-button>
-        </ion-segment>
-      </ion-toolbar>
+      <ion-tab-bar>
+        @if (!isSystemAdmin()) {
+          <ion-tab-button tab="dashboard" [selected]="selectedSegment() === 'dashboard'" (click)="setSelectedSegment('dashboard')">
+            <ion-icon name="clipboard-outline"></ion-icon>
+            <ion-label>Home</ion-label>
+          </ion-tab-button>
+        }
+        <ion-tab-button tab="girls" [selected]="selectedSegment() === 'girls'" (click)="setSelectedSegment('girls')">
+          <ion-icon name="people-outline"></ion-icon>
+          <ion-label>Girls</ion-label>
+        </ion-tab-button>
+        <ion-tab-button tab="schedule" [selected]="selectedSegment() === 'schedule'" (click)="setSelectedSegment('schedule')">
+          <ion-icon name="calendar-outline"></ion-icon>
+          <ion-label>Events</ion-label>
+        </ion-tab-button>
+        <ion-tab-button tab="badges" [selected]="selectedSegment() === 'badges'" (click)="setSelectedSegment('badges')">
+          <ion-icon name="ribbon-outline"></ion-icon>
+          <ion-label>Badges</ion-label>
+        </ion-tab-button>
+        @if (isTroopAdmin() || isSystemAdmin()) {
+          <ion-tab-button tab="toBuy" [selected]="selectedSegment() === 'toBuy'" (click)="setSelectedSegment('toBuy')">
+            <ion-icon name="medal-outline"></ion-icon>
+            <ion-label>To Buy</ion-label>
+          </ion-tab-button>
+        }
+        <ion-tab-button tab="troops" [selected]="selectedSegment() === 'troops'" (click)="setSelectedSegment('troops')">
+          <ion-icon name="shield-checkmark-outline"></ion-icon>
+          <ion-label>{{ isSystemAdmin() ? 'Troops' : 'Admin' }}</ion-label>
+        </ion-tab-button>
+      </ion-tab-bar>
     </ion-footer>
   }
 </ion-app>
