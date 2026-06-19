@@ -408,7 +408,7 @@ export class AppComponent {
     }
   }
 
-  submitAuth(): void {
+  async submitAuth(): Promise<void> {
     if (this.authForm.invalid) {
       this.authForm.markAllAsTouched();
       return;
@@ -425,10 +425,11 @@ export class AppComponent {
       return;
     }
 
-    const result =
+    const result = await (
       this.authMode() === 'login'
         ? this.troopData.login(form.email, form.password)
-        : this.troopData.registerAccount(form.name, form.email, form.password, form.troopId);
+        : this.troopData.registerAccount(form.name, form.email, form.password, form.troopId)
+    );
 
     this.authMessage.set(result.message);
     if (result.ok && this.authMode() === 'login') {

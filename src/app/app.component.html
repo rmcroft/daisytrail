@@ -662,6 +662,9 @@
                 </div>
                 <div>
                   <p>{{ badge.level }} · {{ badge.topic }} · {{ badge.requirements.length }} requirements</p>
+                  @if (badge.description) {
+                    <p>{{ badge.description }}</p>
+                  }
                 </div>
                 <ol>
                   @for (requirement of badge.requirements; track requirement.id) {

@@ -5,6 +5,8 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve --host 0.0.0.0 --port 4200",
+    "api:setup": "cd backend && php artisan migrate --seed",
+    "api:start": "cd backend && php artisan serve --host=0.0.0.0 --port=8000",
     "build": "ng build",
     "test": "ng test",
     "ionic:build": "ionic build",

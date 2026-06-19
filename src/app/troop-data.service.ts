@@ -1,4 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
+import badgeCatalogData from '../assets/badge-catalog.json';
 
 export type ScoutLevel = 'Daisy' | 'Brownie' | 'Junior' | 'Cadette' | 'Senior' | 'Ambassador';
 
@@ -33,6 +34,7 @@ export interface Badge {
   title: string;
   level: ScoutLevel;
   topic: string;
+  description?: string;
   sourceUrl: string;
   requirements: BadgeRequirement[];
 }
@@ -137,6 +139,8 @@ export interface CompleteEventResult {
 
 const STORAGE_KEY = 'troop-tracker-app-state-v2';
 const LEGACY_STORAGE_KEY = 'troop-tracker-state-v1';
+const API_TOKEN_KEY = 'troop-tracker-api-token';
+const API_URL_KEY = 'troop-tracker-api-url';
 
 const emptyTroopState: TroopState = {
   girls: [],
@@ -147,6 +151,7 @@ const emptyTroopState: TroopState = {
 };
 
 const badgeSource = 'https://www.girlscouts.org/en/members/for-girl-scouts/badges-journeys-awards/badge-explorer.html';
+const importedBadgeCatalog = badgeCatalogData as unknown as Badge[];
 
 const starterTroopData: TroopState = {
   girls: [
@@ -318,7 +323,8 @@ const starterTroopData: TroopState = {
         { id: 'badge-4-req-4', title: 'Make something useful outdoors' },
         { id: 'badge-4-req-5', title: 'Share your outdoor art' }
       ]
-    }
+    },
+    ...importedBadgeCatalog
   ],
   manualCompletions: {},
   badgeAwards: {
@@ -527,6 +533,19 @@ const starterState: AppState = {
 @Injectable({ providedIn: 'root' })
 export class TroopDataService {
   private readonly state = signal<AppState>(this.load());
+  private readonly apiUrl = localStorage.getItem(API_URL_KEY) ?? 'http://127.0.0.1:8000/api';
+  private apiToken = localStorage.getItem(API_TOKEN_KEY);
+  private revision = 0;
+  private saveQueue: Promise<void> = Promise.resolve();
+  private syncGeneration = 0;
+
+  readonly syncStatus = signal<'idle' | 'saving' | 'saved' | 'conflict' | 'offline'>('idle');
+
+  constructor() {
+    if (this.apiToken) {
+      this.saveQueue = this.refreshRemote();
+    }
+  }
 
   readonly app = this.state.asReadonly();
 
@@ -597,60 +616,58 @@ export class TroopDataService {
     this.visibleAccounts().filter((account) => account.status === 'pending')
   );
 
-  login(email: string, password: string): LoginResult {
-    const normalizedEmail = email.trim().toLowerCase();
-    const account = this.state().accounts.find((item) => item.email.toLowerCase() === normalizedEmail);
+  async login(email: string, password: string): Promise<LoginResult> {
+    try {
+      const response = await fetch(`${this.apiUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password })
+      });
+      const result = (await response.json()) as {
+        message?: string;
+        token?: string;
+        accountId?: string;
+        state?: AppState | null;
+        revision?: number;
+      };
+      if (!response.ok || !result.token || !result.accountId) {
+        return { ok: false, message: result.message ?? 'Unable to sign in.' };
+      }
 
-    if (!account || account.passwordHash !== hashPassword(password)) {
-      return { ok: false, message: 'Email or password did not match.' };
+      this.apiToken = result.token;
+      this.revision = result.revision ?? 0;
+      localStorage.setItem(API_TOKEN_KEY, result.token);
+      const serverState = result.state ? normalizeState(result.state) : this.state();
+      const account = serverState.accounts.find((item) => item.id === result.accountId);
+      if (!account) {
+        return { ok: false, message: 'Your account is not present in the troop data.' };
+      }
+      this.state.set({
+        ...serverState,
+        currentAccountId: account.id,
+        currentTroopId: account.role === 'system-admin' ? serverState.troops[0]?.id ?? null : account.troopIds[0] ?? null
+      });
+      this.persist();
+      return { ok: true, message: 'Signed in.' };
+    } catch {
+      this.syncStatus.set('offline');
+      return { ok: false, message: 'Could not reach the Laravel server. Start the API and try again.' };
     }
-
-    if (account.status === 'pending') {
-      return { ok: false, message: 'Your account is pending troop leader approval.' };
-    }
-
-    if (account.status === 'inactive') {
-      return { ok: false, message: 'This account is disabled. Contact a troop leader for access.' };
-    }
-
-    this.state.update((current) => ({
-      ...current,
-      currentAccountId: account.id,
-      currentTroopId: account.role === 'system-admin' ? current.troops[0]?.id ?? null : account.troopIds[0] ?? null
-    }));
-    this.persist();
-    return { ok: true, message: 'Signed in.' };
   }
 
-  registerAccount(name: string, email: string, password: string, troopId: string): LoginResult {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (this.state().accounts.some((account) => account.email.toLowerCase() === normalizedEmail)) {
-      return { ok: false, message: 'An account already exists for that email.' };
+  async registerAccount(name: string, email: string, password: string, troopId: string): Promise<LoginResult> {
+    try {
+      const response = await fetch(`${this.apiUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, troopId })
+      });
+      const result = (await response.json()) as { message?: string; errors?: Record<string, string[]> };
+      const validationMessage = result.errors ? Object.values(result.errors)[0]?.[0] : null;
+      return { ok: response.ok, message: result.message ?? validationMessage ?? 'Unable to create the account.' };
+    } catch {
+      return { ok: false, message: 'Could not reach the Laravel server. Start the API and try again.' };
     }
-
-    const selectedTroop = this.state().troops.find((troop) => troop.id === troopId);
-    if (!selectedTroop) {
-      return { ok: false, message: 'Choose a troop to request access.' };
-    }
-
-    const accountId = crypto.randomUUID();
-    const account: Account = {
-      id: accountId,
-      name: name.trim() || 'New Parent',
-      email: normalizedEmail,
-      passwordHash: hashPassword(password),
-      role: 'parent',
-      status: 'pending',
-      troopIds: [troopId],
-      girlIds: []
-    };
-
-    this.state.update((current) => ({
-      ...current,
-      accounts: [...current.accounts, account]
-    }));
-    this.persist();
-    return { ok: true, message: `Account requested for ${selectedTroop.name}. A troop leader must approve it before sign in.` };
   }
 
   approveAccount(accountId: string): void {
@@ -732,12 +749,21 @@ export class TroopDataService {
   }
 
   logout(): void {
+    const token = this.apiToken;
+    if (token) {
+      void fetch(`${this.apiUrl}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+      }).catch(() => undefined);
+    }
+    this.apiToken = null;
+    localStorage.removeItem(API_TOKEN_KEY);
     this.state.update((current) => ({
       ...current,
       currentAccountId: null,
       currentTroopId: null
     }));
-    this.persist();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state()));
   }
 
   switchTroop(troopId: string): void {
@@ -1191,6 +1217,84 @@ export class TroopDataService {
 
   private persist(): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state()));
+    if (!this.apiToken) {
+      return;
+    }
+
+    const snapshot = structuredClone(this.state());
+    const generation = this.syncGeneration;
+    this.saveQueue = this.saveQueue.then(() => this.saveRemote(snapshot, generation));
+  }
+
+  private async saveRemote(snapshot: AppState, generation: number): Promise<void> {
+    if (!this.apiToken || generation !== this.syncGeneration) return;
+    this.syncStatus.set('saving');
+    try {
+      const response = await fetch(`${this.apiUrl}/state`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.apiToken}`
+        },
+        body: JSON.stringify({ state: snapshot, revision: this.revision })
+      });
+      const result = (await response.json()) as { state?: AppState; revision?: number };
+      if (response.status === 409) {
+        this.syncGeneration += 1;
+        this.revision = result.revision ?? this.revision;
+        const accountId = this.state().currentAccountId;
+        if (result.state && accountId) {
+          const refreshed = normalizeState(result.state);
+          const account = refreshed.accounts.find((item) => item.id === accountId);
+          this.state.set({
+            ...refreshed,
+            currentAccountId: account ? accountId : null,
+            currentTroopId: account?.role === 'system-admin' ? refreshed.troops[0]?.id ?? null : account?.troopIds[0] ?? null
+          });
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state()));
+        }
+        this.syncStatus.set('conflict');
+        return;
+      }
+      if (!response.ok) throw new Error('Save failed');
+      this.revision = result.revision ?? this.revision + 1;
+      this.syncStatus.set('saved');
+    } catch {
+      this.syncStatus.set('offline');
+    }
+  }
+
+  private async refreshRemote(): Promise<void> {
+    if (!this.apiToken) return;
+    try {
+      const response = await fetch(`${this.apiUrl}/state`, {
+        headers: { Authorization: `Bearer ${this.apiToken}`, Accept: 'application/json' }
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.apiToken = null;
+          localStorage.removeItem(API_TOKEN_KEY);
+        }
+        return;
+      }
+      const result = (await response.json()) as { state?: AppState | null; revision?: number };
+      this.revision = result.revision ?? 0;
+      const accountId = this.state().currentAccountId;
+      if (result.state && accountId) {
+        const refreshed = normalizeState(result.state);
+        const account = refreshed.accounts.find((item) => item.id === accountId);
+        this.state.set({
+          ...refreshed,
+          currentAccountId: account ? accountId : null,
+          currentTroopId: account?.role === 'system-admin' ? refreshed.troops[0]?.id ?? null : account?.troopIds[0] ?? null
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.state()));
+      }
+      this.syncStatus.set('saved');
+    } catch {
+      this.syncStatus.set('offline');
+    }
   }
 }
 
@@ -1221,13 +1325,16 @@ function normalizeState(state: AppState): AppState {
     troops: state.troops.map((troop) => {
       const legacyTroop = troop as Troop & { levelFocus?: ScoutLevel };
       const levels: ScoutLevel[] = troop.levels ?? (legacyTroop.levelFocus ? [legacyTroop.levelFocus] : ['Junior']);
+      const normalizedLevels =
+        troop.id === 'troop-1001' && !levels.includes('Cadette') ? [...levels, 'Cadette' as ScoutLevel] : levels;
+      const data = normalizeTroopState(addStarterCadetteSamples(troop.id, troop.data));
       return {
         ...troop,
-        levels:
-          troop.id === 'troop-1001' && !levels.includes('Cadette')
-            ? [...levels, 'Cadette' as ScoutLevel]
-            : levels,
-        data: normalizeTroopState(addStarterCadetteSamples(troop.id, troop.data))
+        levels: normalizedLevels,
+        data: {
+          ...data,
+          badges: mergeById(data.badges, importedBadgeCatalog.filter((badge) => normalizedLevels.includes(badge.level)))
+        }
       };
     })
   };
