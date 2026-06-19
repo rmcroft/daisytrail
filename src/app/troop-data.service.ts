@@ -610,7 +610,7 @@ export class TroopDataService {
     }
 
     if (account.status === 'inactive') {
-      return { ok: false, message: 'This account is inactive. Contact a troop leader for access.' };
+      return { ok: false, message: 'This account is disabled. Contact a troop leader for access.' };
     }
 
     this.state.update((current) => ({
@@ -687,10 +687,46 @@ export class TroopDataService {
           ? {
               ...account,
               troopIds: account.troopIds.includes(troop.id) ? account.troopIds : [...account.troopIds, troop.id],
-              girlIds: nextGirlIds
+              girlIds: [
+                ...account.girlIds.filter((girlId) => !validGirlIds.has(girlId)),
+                ...nextGirlIds
+              ]
             }
           : account
       )
+    }));
+    this.persist();
+  }
+
+  setGirlParentAccounts(girlId: string, accountIds: string[]): void {
+    const troop = this.currentTroop();
+    if (!troop || !troop.data.girls.some((girl) => girl.id === girlId)) {
+      return;
+    }
+
+    const selectedAccountIds = new Set(accountIds);
+    this.state.update((current) => ({
+      ...current,
+      accounts: current.accounts.map((account) => {
+        if (account.role !== 'parent' || !account.troopIds.includes(troop.id)) {
+          return account;
+        }
+
+        const hasGirl = account.girlIds.includes(girlId);
+        if (selectedAccountIds.has(account.id)) {
+          return {
+            ...account,
+            girlIds: hasGirl ? account.girlIds : [...account.girlIds, girlId]
+          };
+        }
+
+        return hasGirl
+          ? {
+              ...account,
+              girlIds: account.girlIds.filter((id) => id !== girlId)
+            }
+          : account;
+      })
     }));
     this.persist();
   }
@@ -742,10 +778,10 @@ export class TroopDataService {
     this.persist();
   }
 
-  addGirl(girl: Omit<Girl, 'id'>): void {
+  addGirl(girl: Omit<Girl, 'id'>): string | null {
     const troop = this.currentTroop();
     if (!troop) {
-      return;
+      return null;
     }
 
     const newGirl = { ...girl, id: crypto.randomUUID() };
@@ -757,6 +793,7 @@ export class TroopDataService {
       )
     }));
     this.persist();
+    return newGirl.id;
   }
 
   updateGirl(girlId: string, girl: Omit<Girl, 'id'>): void {
@@ -776,6 +813,32 @@ export class TroopDataService {
               data: {
                 ...item.data,
                 girls: item.data.girls.map((existingGirl) => (existingGirl.id === girlId ? updatedGirl : existingGirl))
+              }
+            }
+          : item
+      )
+    }));
+    this.persist();
+  }
+
+  updateGirlDetails(
+    girlId: string,
+    details: Pick<Girl, 'firstName' | 'lastName' | 'schoolGrade' | 'goalsForYear' | 'notes' | 'authorizedPickupNames'>
+  ): void {
+    const troop = this.currentTroop();
+    if (!troop) {
+      return;
+    }
+
+    this.state.update((current) => ({
+      ...current,
+      troops: current.troops.map((item) =>
+        item.id === troop.id
+          ? {
+              ...item,
+              data: {
+                ...item.data,
+                girls: item.data.girls.map((girl) => (girl.id === girlId ? { ...girl, ...details } : girl))
               }
             }
           : item
@@ -929,7 +992,7 @@ export class TroopDataService {
             requirementId: requirement.id
           }))
       );
-      const nextCompletions = { ...event.completions };
+      const nextCompletions: Record<string, Record<string, boolean>> = {};
       const updatedGirlIds = new Set<string>();
 
       completedRequirements.forEach(({ badgeLevel, requirementId }) => {
@@ -938,7 +1001,7 @@ export class TroopDataService {
           .forEach((girl) => {
             const girlCompletions = nextCompletions[girl.id] ?? {};
 
-            if (!girlCompletions[requirementId]) {
+            if (!event.completions[girl.id]?.[requirementId]) {
               result.associationsCreated += 1;
               updatedGirlIds.add(girl.id);
             }

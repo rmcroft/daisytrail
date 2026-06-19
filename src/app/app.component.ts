@@ -75,7 +75,7 @@ export class AppComponent {
   readonly calendarWeekdays = calendarWeekdays;
   readonly calendarMonth = signal(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   readonly selectedEventId = signal<string | null>(null);
-  readonly selectedSegment = signal<'dashboard' | 'girls' | 'schedule' | 'badges' | 'troops'>('dashboard');
+  readonly selectedSegment = signal<'dashboard' | 'girls' | 'schedule' | 'badges' | 'toBuy' | 'troops'>('dashboard');
   readonly authMode = signal<'login' | 'register'>('login');
   readonly authMessage = signal('');
   readonly updateMessage = signal('');
@@ -84,11 +84,13 @@ export class AppComponent {
   readonly selectedCalendarDate = signal(new Date().toISOString().slice(0, 10));
   readonly parentSegment = signal<ParentSegment>('events');
   readonly activeGirlEditor = signal<'create' | 'edit' | null>(null);
+  readonly parentGirlInfoEditorOpen = signal(false);
   readonly activeEventEditor = signal<'create' | 'edit' | null>(null);
   readonly badgeAwardEditorOpen = signal(false);
   readonly parentGirlEditorOpen = signal(false);
   readonly editingParentAccountId = signal<string | null>(null);
   readonly editingGirlId = signal<string | null>(null);
+  readonly editingParentGirlId = signal<string | null>(null);
   readonly selectedGirlId = signal<string | null>(null);
   readonly editingEventId = signal<string | null>(null);
   readonly editingBadgeId = signal<string | null>(null);
@@ -241,6 +243,22 @@ export class AppComponent {
   readonly badgeEditorOpen = computed(() => this.activeBadgeEditor() !== null);
   readonly girlEditorOpen = computed(() => this.activeGirlEditor() !== null);
   readonly eventEditorOpen = computed(() => this.activeEventEditor() !== null);
+  readonly parentAccounts = computed(() => {
+    const troopId = this.currentTroopId();
+    return this.visibleAccounts().filter(
+      (account) => account.role === 'parent' && (!troopId || account.troopIds.includes(troopId))
+    );
+  });
+  readonly badgePurchaseSummary = computed(() =>
+    this.state()
+      .girls.flatMap((girl) =>
+        this.outstandingCompletedBadgesForGirl(girl).map((progress) => ({
+          girl,
+          badge: progress.badge
+        }))
+      )
+      .sort((a, b) => a.badge.title.localeCompare(b.badge.title) || a.girl.firstName.localeCompare(b.girl.firstName))
+  );
 
   readonly girlForm = this.fb.nonNullable.group({
     firstName: ['', Validators.required],
@@ -249,7 +267,8 @@ export class AppComponent {
     schoolGrade: ['', Validators.required],
     goalsForYear: [''],
     notes: [''],
-    parentName: ['', Validators.required],
+    parentAccountIds: [[] as string[]],
+    parentName: [''],
     parentRelationship: ['Parent'],
     parentPhone: ['', Validators.pattern(phonePattern)],
     parentEmail: ['', Validators.email],
@@ -264,7 +283,8 @@ export class AppComponent {
     schoolGrade: ['', Validators.required],
     goalsForYear: [''],
     notes: [''],
-    parentName: ['', Validators.required],
+    parentAccountIds: [[] as string[]],
+    parentName: [''],
     parentRelationship: ['Parent'],
     parentPhone: ['', Validators.pattern(phonePattern)],
     parentEmail: ['', Validators.email],
@@ -352,6 +372,15 @@ export class AppComponent {
     girlIds: [[] as string[]]
   });
 
+  readonly parentGirlForm = this.fb.nonNullable.group({
+    firstName: ['', Validators.required],
+    lastName: ['', Validators.required],
+    schoolGrade: ['', Validators.required],
+    goalsForYear: [''],
+    notes: [''],
+    authorizedPickupNames: ['']
+  });
+
   constructor() {
     addIcons({
       calendarOutline,
@@ -373,6 +402,9 @@ export class AppComponent {
     const nextEvent = this.nextVisibleEvent();
     if (nextEvent) {
       this.selectedCalendarDate.set(nextEvent.date);
+    }
+    if (this.isSystemAdmin()) {
+      this.selectedSegment.set('troops');
     }
   }
 
@@ -406,7 +438,7 @@ export class AppComponent {
         this.selectedCalendarDate.set(nextEvent.date);
         this.calendarMonth.set(new Date(`${nextEvent.date}T00:00:00`));
       }
-      this.selectedSegment.set('dashboard');
+      this.selectedSegment.set(this.isSystemAdmin() ? 'troops' : 'dashboard');
     }
   }
 
@@ -416,7 +448,7 @@ export class AppComponent {
     this.selectedSegment.set('dashboard');
   }
 
-  setSelectedSegment(segment: 'dashboard' | 'girls' | 'schedule' | 'badges' | 'troops'): void {
+  setSelectedSegment(segment: 'dashboard' | 'girls' | 'schedule' | 'badges' | 'toBuy' | 'troops'): void {
     this.selectedSegment.set(segment);
     this.editingEventId.set(null);
     this.editingGirlId.set(null);
@@ -477,6 +509,58 @@ export class AppComponent {
     return names.length > 0 ? names.join(', ') : 'No girls assigned';
   }
 
+  parentAccountIdsForGirl(girl: Girl): string[] {
+    return this.parentAccounts()
+      .filter((account) => account.girlIds.includes(girl.id))
+      .map((account) => account.id);
+  }
+
+  openParentGirlInfoEditor(girl: Girl): void {
+    if (!this.parentGirls().some((parentGirl) => parentGirl.id === girl.id)) {
+      return;
+    }
+
+    this.editingParentGirlId.set(girl.id);
+    this.parentGirlForm.reset({
+      firstName: girl.firstName,
+      lastName: girl.lastName,
+      schoolGrade: girl.schoolGrade,
+      goalsForYear: girl.goalsForYear,
+      notes: girl.notes,
+      authorizedPickupNames: girl.authorizedPickupNames.join('\n')
+    });
+    this.parentGirlInfoEditorOpen.set(true);
+  }
+
+  closeParentGirlInfoEditor(): void {
+    this.parentGirlInfoEditorOpen.set(false);
+    this.editingParentGirlId.set(null);
+    this.parentGirlForm.reset();
+  }
+
+  saveParentGirlInfo(): void {
+    const girlId = this.editingParentGirlId();
+    if (!girlId || !this.parentGirls().some((girl) => girl.id === girlId)) {
+      return;
+    }
+
+    if (this.parentGirlForm.invalid) {
+      this.parentGirlForm.markAllAsTouched();
+      return;
+    }
+
+    const form = this.parentGirlForm.getRawValue();
+    this.troopData.updateGirlDetails(girlId, {
+      firstName: form.firstName,
+      lastName: form.lastName,
+      schoolGrade: form.schoolGrade,
+      goalsForYear: form.goalsForYear,
+      notes: form.notes,
+      authorizedPickupNames: this.linesFromText(form.authorizedPickupNames)
+    });
+    this.closeParentGirlInfoEditor();
+  }
+
   openParentGirlEditor(account: Account): void {
     if (account.role !== 'parent' || (!this.isSystemAdmin() && !this.isTroopAdmin())) {
       return;
@@ -522,36 +606,29 @@ export class AppComponent {
     }
 
     const form = this.girlForm.getRawValue();
-    this.troopData.addGirl({
+    const parentContacts = this.parentContactsFromForm(form.parentAccountIds, form.additionalGuardians);
+    const primaryParent = parentContacts[0] ?? this.emptyParentContact();
+    const newGirlId = this.troopData.addGirl({
       firstName: form.firstName,
       lastName: form.lastName,
       level: form.level,
       schoolGrade: form.schoolGrade,
       goalsForYear: form.goalsForYear,
       notes: form.notes,
-      parent: {
-        name: form.parentName,
-        relationship: form.parentRelationship,
-        phone: form.parentPhone,
-        email: form.parentEmail,
-        authorizedPickup: true
-      },
-      guardians: this.guardiansFromForm(
-        form.parentName,
-        form.parentRelationship,
-        form.parentPhone,
-        form.parentEmail,
-        form.additionalGuardians
-      ),
-      authorizedPickupNames: this.pickupNamesFromForm(form.parentName, form.authorizedPickupNames)
+      parent: primaryParent,
+      guardians: parentContacts,
+      authorizedPickupNames: this.pickupNamesFromContacts(parentContacts, form.authorizedPickupNames)
     });
-    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
+    if (newGirlId) {
+      this.troopData.setGirlParentAccounts(newGirlId, form.parentAccountIds);
+    }
+    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent', parentAccountIds: [] });
     this.closeGirlEditor();
   }
 
   openAddGirlModal(): void {
     this.editingGirlId.set(null);
-    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
+    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent', parentAccountIds: [] });
     this.activeGirlEditor.set('create');
   }
 
@@ -565,12 +642,13 @@ export class AppComponent {
       schoolGrade: girl.schoolGrade,
       goalsForYear: girl.goalsForYear,
       notes: girl.notes,
+      parentAccountIds: this.parentAccountIdsForGirl(girl),
       parentName: girl.parent.name,
       parentRelationship: girl.parent.relationship,
       parentPhone: girl.parent.phone,
       parentEmail: girl.parent.email,
       additionalGuardians: girl.guardians
-        .filter((guardian) => guardian.email !== girl.parent.email || guardian.name !== girl.parent.name)
+        .filter((guardian) => !this.parentAccounts().some((account) => account.email.toLowerCase() === guardian.email.toLowerCase()))
         .map((guardian) => this.guardianLine(guardian))
         .join('\n'),
       authorizedPickupNames: girl.authorizedPickupNames.join('\n')
@@ -586,8 +664,8 @@ export class AppComponent {
   closeGirlEditor(): void {
     this.activeGirlEditor.set(null);
     this.editingGirlId.set(null);
-    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
-    this.editGirlForm.reset({ level: 'Junior', parentRelationship: 'Parent' });
+    this.girlForm.reset({ level: 'Junior', parentRelationship: 'Parent', parentAccountIds: [] });
+    this.editGirlForm.reset({ level: 'Junior', parentRelationship: 'Parent', parentAccountIds: [] });
   }
 
   showGirlProgress(girl: Girl): void {
@@ -612,6 +690,8 @@ export class AppComponent {
     }
 
     const form = this.editGirlForm.getRawValue();
+    const parentContacts = this.parentContactsFromForm(form.parentAccountIds, form.additionalGuardians);
+    const primaryParent = parentContacts[0] ?? this.emptyParentContact();
     this.troopData.updateGirl(girlId, {
       firstName: form.firstName,
       lastName: form.lastName,
@@ -619,22 +699,11 @@ export class AppComponent {
       schoolGrade: form.schoolGrade,
       goalsForYear: form.goalsForYear,
       notes: form.notes,
-      parent: {
-        name: form.parentName,
-        relationship: form.parentRelationship,
-        phone: form.parentPhone,
-        email: form.parentEmail,
-        authorizedPickup: true
-      },
-      guardians: this.guardiansFromForm(
-        form.parentName,
-        form.parentRelationship,
-        form.parentPhone,
-        form.parentEmail,
-        form.additionalGuardians
-      ),
-      authorizedPickupNames: this.pickupNamesFromForm(form.parentName, form.authorizedPickupNames)
+      parent: primaryParent,
+      guardians: parentContacts,
+      authorizedPickupNames: this.pickupNamesFromContacts(parentContacts, form.authorizedPickupNames)
     });
+    this.troopData.setGirlParentAccounts(girlId, form.parentAccountIds);
     this.closeGirlEditor();
   }
 
@@ -1159,20 +1228,17 @@ export class AppComponent {
     return this.badgeProgressForGirl(girl).filter((progress) => progress.status !== 'not-started');
   }
 
-  private guardiansFromForm(
-    parentName: string,
-    parentRelationship: string,
-    parentPhone: string,
-    parentEmail: string,
-    additionalGuardians: string
-  ): ParentContact[] {
-    const primaryGuardian: ParentContact = {
-      name: parentName,
-      relationship: parentRelationship,
-      phone: parentPhone,
-      email: parentEmail,
-      authorizedPickup: true
-    };
+  private parentContactsFromForm(parentAccountIds: string[], additionalGuardians: string): ParentContact[] {
+    const accountContacts = parentAccountIds
+      .map((accountId) => this.parentAccounts().find((account) => account.id === accountId))
+      .filter((account): account is Account => Boolean(account))
+      .map((account) => ({
+        name: account.name || account.email,
+        relationship: 'Parent',
+        phone: '',
+        email: account.email,
+        authorizedPickup: true
+      }));
     const additional = additionalGuardians
       .split('\n')
       .map((line) => line.trim())
@@ -1192,16 +1258,26 @@ export class AppComponent {
       })
       .filter((guardian) => Boolean(guardian.name));
 
-    return [primaryGuardian, ...additional];
+    return [...accountContacts, ...additional];
   }
 
-  private pickupNamesFromForm(primaryName: string, authorizedPickupNames: string): string[] {
+  private pickupNamesFromContacts(parentContacts: ParentContact[], authorizedPickupNames: string): string[] {
     const names = authorizedPickupNames
       .split('\n')
       .map((name) => name.trim())
       .filter(Boolean);
 
-    return Array.from(new Set([primaryName, ...names].filter(Boolean)));
+    return Array.from(new Set([...parentContacts.filter((contact) => contact.authorizedPickup).map((contact) => contact.name), ...names].filter(Boolean)));
+  }
+
+  private emptyParentContact(): ParentContact {
+    return {
+      name: '',
+      relationship: 'Parent',
+      phone: '',
+      email: '',
+      authorizedPickup: true
+    };
   }
 
   private linesFromText(value: string): string[] {
